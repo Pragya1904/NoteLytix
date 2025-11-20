@@ -1,2 +1,2 @@
 # NoteLytix
-Modern Note Taking App
+Where conversations become action.
