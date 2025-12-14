@@ -54,10 +54,14 @@
     "vaul": "^1.1.2",
     "zod": "^3.24.4"
   },
+  "main": "public/electron.js",
+  "homepage": "./",
   "scripts": {
     "start": "craco start",
     "build": "craco build",
-    "test": "craco test"
+    "test": "craco test",
+    "electron:dev": "concurrently \"cross-env BROWSER=none npm start\" \"wait-on http://localhost:3000 && electron .\"",
+    "electron:build": "npm run build && electron-builder -w -c.extraMetadata.main=build/electron.js"
   },
   "browserslist": {
     "production": [

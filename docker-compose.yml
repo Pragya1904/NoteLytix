@@ -1,10 +1,11 @@
 services:
+  # Backend services
   auth:
     build:
-      context: .
+      context: ./backend
       target: dev
     volumes:
-      - .:/app
+      - ./backend:/app
     environment:
       - PORT=8081
       - DB_HOST=postgres
@@ -12,35 +13,31 @@ services:
       - DB_USER=user
       - DB_PASSWORD=password
       - DB_NAME=notelytix
-      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
-      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
-      - JWT_TOKEN=${JWT_TOKEN}
-
     ports:
       - "8081:8081"
-    command: go run cmd/auth/main.go
+    command: air -c .air.auth.toml
     depends_on:
       - postgres
 
   stt:
     build:
-      context: .
+      context: ./backend
       target: dev
     volumes:
-      - .:/app
+      - ./backend:/app
     environment:
       - PORT=8082
       - SARVAM_API_KEY=${SARVAM_API_KEY}
     ports:
       - "8082:8082"
-    command: go run cmd/stt/stt.go
+    command: air -c .air.stt.toml
 
   meetings:
     build:
-      context: .
+      context: ./backend
       target: dev
     volumes:
-      - .:/app
+      - ./backend:/app
     environment:
       - PORT=8083
       - DB_HOST=postgres
@@ -50,22 +47,22 @@ services:
       - DB_NAME=notelytix
     ports:
       - "8083:8083"
-    command: go run cmd/meetings/main.go
+    command: air -c .air.meetings.toml
     depends_on:
       - postgres
 
   llm:
     build:
-      context: .
+      context: ./backend
       target: dev
     volumes:
-      - .:/app
+      - ./backend:/app
     environment:
       - PORT=8084
       - GEMINI_API_KEY=${GEMINI_API_KEY}
     ports:
       - "8084:8084"
-    command: go run cmd/llm/llm.go
+    command: air -c .air.llm.toml
 
   postgres:
     image: postgres:15-alpine
@@ -77,6 +74,33 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+
+  # Frontend service
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    env_file:
+      - ./frontend/.env
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+      - WATCHPACK_POLLING=true
+    develop:
+      watch:
+        - action: sync
+          path: ./frontend
+          target: /app
+          ignore:
+            - node_modules/
+            - build/
+            - .git/
+        - action: rebuild
+          path: ./frontend/package.json
 
 volumes:
   postgres_data:
