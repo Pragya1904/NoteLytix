@@ -1,12 +1,18 @@
 package main
 
+import (
+	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
+	_ "github.com/lib/pq"
 	"notelytix/internal/stt/providers"
 )
 
@@ -14,6 +20,39 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
 		return true // Allow all origins for dev
 	},
+}
+
+var db *sql.DB
+
+func initDB() {
+	host := os.Getenv("DB_HOST")
+	port := os.Getenv("DB_PORT")
+	user := os.Getenv("DB_USER")
+	password := os.Getenv("DB_PASSWORD")
+	dbname := os.Getenv("DB_NAME")
+
+	connStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+		host, port, user, password, dbname)
+
+	var err error
+	db, err = sql.Open("postgres", connStr)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Retry loop for DB connection
+	for i := 0; i < 5; i++ {
+		err = db.Ping()
+		if err == nil {
+			break
+		}
+		log.Printf("[STT] Waiting for database... (%d/5)", i+1)
+		time.Sleep(2 * time.Second)
+	}
+	if err != nil {
+		log.Fatal("[STT] Could not connect to database:", err)
+	}
+	log.Println("[STT] Database connected")
 }
 
 // Inbound Event Types
@@ -51,19 +90,14 @@ func main() {
 		log.Fatal("SARVAM_API_KEY is required")
 	}
 
+	initDB()
+
 	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("STT Service is healthy"))
 	})
 
-	// Route: /v1/stt/ws/{user_email} -- meeting_id is now in start_meeting event payload
-	// User originally planned URL path params for email/callid, but protocol says:
-	// "once the recorder hits record button... call backend to create meeting... get meeting_id... 
-	// ... then backend connects... internal websocket created... start_meeting event sent"
-	//
-	// We will keep endpoint generic: /v1/stt/ws
-	// And rely on the initial "start_meeting" event to identify session context.
-
+	// Route: /v1/stt/ws
 	http.HandleFunc("/v1/stt/ws", func(w http.ResponseWriter, r *http.Request) {
 		frontendConn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
@@ -75,9 +109,11 @@ func main() {
 		log.Println("[STT] Frontend connected")
 
 		var (
-			sarvam     *providers.SarvamProvider
-			sarvamMu   sync.Mutex
-			isConnected bool
+			sarvam          *providers.SarvamProvider
+			sarvamMu        sync.Mutex
+			isConnected     bool
+			currentMeetingID int
+			fullTranscript  strings.Builder
 		)
 
 		// Helper to send JSON event to frontend
@@ -104,16 +140,13 @@ func main() {
 
 			s := providers.NewSarvamProvider(apiKey)
 			config := providers.SarvamConfig{
-				Model:        "saaras:v1",
+				Model:        "saaras:v2.5",
 				SampleRate:   16000,
-				Encoding:     "linear16",
+				Encoding:     "audio/wav",
 				VadSignals:   true,
 				FlushSnippet: true,
 			}
 
-			// Add timeout or context?
-			// Using request context might be cancelled if WS closes? 
-			// Let's use background context for the upstream connection itself but tie closer to loop.
 			if err := s.ConnectWithHeader(r.Context(), config); err != nil {
 				log.Printf("[STT] Failed to connect to Sarvam: %v", err)
 				sendEvent(EventError, map[string]interface{}{"error": "Failed to connect to STT provider"})
@@ -140,19 +173,25 @@ func main() {
 							return // Channel closed
 						}
 						log.Printf("[STT] Transcript: %s", transcript)
+						
+						// Accumulate transcript
+						sarvamMu.Lock()
+						if fullTranscript.Len() > 0 {
+							fullTranscript.WriteString(" ")
+						}
+						fullTranscript.WriteString(transcript)
+						sarvamMu.Unlock()
+
 						sendEvent(EventTranscribedText, map[string]interface{}{
 							"text": transcript,
 						})
 					case err := <-errChan:
 						log.Printf("[STT] Sarvam Error: %v", err)
-						// Should we disconnect?
-						// Sarvam closed connection.
 						// Update state
 						sarvamMu.Lock()
 						isConnected = false
 						sarvam = nil
 						sarvamMu.Unlock()
-						// Notify frontend?
 						return
 					}
 				}
@@ -188,9 +227,9 @@ func main() {
 
 			if mt == websocket.BinaryMessage {
 				// Audio Data
+				// sarvamMu.Lock() - Avoid locking for just logging if perf matters, but safer
 				sarvamMu.Lock()
 				if isConnected && sarvam != nil {
-					// StreamChunk will encode to Base64 and send JSON
 					if err := sarvam.StreamChunk(r.Context(), message); err != nil {
 						log.Printf("[STT] Failed to stream: %v", err)
 					}
@@ -208,7 +247,7 @@ func main() {
 				switch control.Event {
 				case EventStartMeeting:
 					log.Printf("[STT] Event: start_meeting (ID: %d)", control.MeetingID)
-					// Handshake Start
+					currentMeetingID = control.MeetingID
 					connectSarvam()
 
 				case EventPauseMeeting:
@@ -222,13 +261,25 @@ func main() {
 				case EventEndMeeting:
 					log.Println("[STT] Event: end_meeting")
 					disconnectSarvam()
-					// Should we close frontend connection? Usually yes.
+					
+					// Save Transcript to DB
+					if currentMeetingID != 0 {
+						finalTranscript := fullTranscript.String()
+						if finalTranscript != "" {
+							log.Printf("[STT] Saving transcript for Meeting %d (Length: %d)", currentMeetingID, len(finalTranscript))
+							_, err := db.Exec("UPDATE meetings SET transcript = $1 WHERE id = $2", finalTranscript, currentMeetingID)
+							if err != nil {
+								log.Printf("[STT] Failed to save transcript: %v", err)
+							} else {
+								log.Println("[STT] Transcript saved successfully")
+							}
+						}
+					}
+
 					frontendConn.Close()
 					return
 
 				case EventKeepAlive:
-					// user requested: "event 4: keep_alive --> frontend must send... backend must send back..."
-					// Actually docs said: "event 2: keep_alive (ping message)" outbound
 					sendEvent(EventPong, nil)
 
 				default:

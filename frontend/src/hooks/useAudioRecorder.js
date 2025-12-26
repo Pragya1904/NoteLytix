@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 
+
 export const useAudioRecorder = (userEmail) => {
     const [isRecording, setIsRecording] = useState(false);
     const [isPaused, setIsPaused] = useState(false);
@@ -14,6 +15,7 @@ export const useAudioRecorder = (userEmail) => {
     const streamRef = useRef(null);
     const audioQueue = useRef([]);
     const keepAliveInterval = useRef(null);
+    const testAudioInterval = useRef(null);
     const isConnecting = useRef(false);
 
     // Helpers for PCM conversion
@@ -63,6 +65,10 @@ export const useAudioRecorder = (userEmail) => {
     };
 
     const stopAudioProcessing = () => {
+        if (testAudioInterval.current) {
+            clearInterval(testAudioInterval.current);
+            testAudioInterval.current = null;
+        }
         if (processor.current) {
             processor.current.disconnect();
             processor.current.onaudioprocess = null;
@@ -89,6 +95,8 @@ export const useAudioRecorder = (userEmail) => {
             }
         }
     };
+
+
 
     const startAudioProcessing = (stream) => {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -163,6 +171,7 @@ export const useAudioRecorder = (userEmail) => {
                 }, 5000);
 
                 startAudioProcessing(stream);
+                // startTestAudioStreaming();
             };
 
             ws.current.onmessage = (event) => {
@@ -180,7 +189,7 @@ export const useAudioRecorder = (userEmail) => {
                     else if (data.event === "transcribed_text") {
                         setTranscript(prev => [...prev, {
                             id: Date.now(),
-                            speaker: 'Sarvam',
+                            speaker: userEmail ? userEmail.split('@')[0] : 'User',
                             text: data.text,
                             time: new Date().toLocaleTimeString()
                         }]);
@@ -253,7 +262,9 @@ export const useAudioRecorder = (userEmail) => {
         stopRecording,
         pauseRecording,
         resumeRecording,
+        resumeRecording,
         transcript,
-        error
+        error,
+        meetingId
     };
 };

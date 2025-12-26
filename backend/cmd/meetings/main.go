@@ -51,27 +51,45 @@ func initDB() {
 			created_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			recording_url TEXT,
 			transcript TEXT,
-			summary TEXT
+			summary TEXT,
+			title TEXT
 		)
 	`)
 	if err != nil {
-		// It might fail if users table doesn't exist yet (race condition), but auth runs first usually.
-		// Or if we run meetings independently.
-		log.Printf("Warning: Failed to create meetings table (might be due to missing users table): %v", err)
-	} else {
-		log.Println("Database initialized and meetings table checked")
+		log.Printf("Warning: Failed to create meetings table: %v", err)
 	}
+
+	// Migration: Ensure title column exists
+	_, err = db.Exec(`ALTER TABLE meetings ADD COLUMN IF NOT EXISTS title TEXT`)
+	if err != nil {
+		log.Printf("Warning: Failed to add title column: %v", err)
+	}
+
+	log.Println("Database initialized and meetings table checked")
 }
 
-// Request struct
+// Request structs
 type CreateMeetingRequest struct {
 	UserEmail string `json:"user_email"`
 }
 
-// Response struct
+type GetMeetingRequest struct {
+	MeetingID string `json:"meeting_id"` // Can be passed as query param too
+}
+
+// Response structs
 type CreateMeetingResponse struct {
 	MeetingID int    `json:"meeting_id"`
 	Status    string `json:"status"`
+}
+
+type MeetingDetails struct {
+	ID        int    `json:"id"`
+	OwnerID   string `json:"owner_id"`
+	CreatedOn string `json:"created_on"`
+	Title     string `json:"title"`
+	Transcript string `json:"transcript,omitempty"`
+	Summary    string `json:"summary,omitempty"`
 }
 
 func main() {
@@ -82,8 +100,101 @@ func main() {
 
 	initDB()
 
+	// GET Meeting Details
+	http.HandleFunc("/meeting/get", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		meetingID := r.URL.Query().Get("id")
+		if meetingID == "" {
+			http.Error(w, "meeting_id required", http.StatusBadRequest)
+			return
+		}
+
+		var m MeetingDetails
+		var title sql.NullString
+		var transcript sql.NullString
+		var summary sql.NullString
+
+		// Optimized query: If summary exists, don't fetch full transcript
+		err := db.QueryRow(`
+			SELECT id, owner_id, created_on, title, 
+			       CASE WHEN summary IS NOT NULL AND summary != '' THEN '' ELSE transcript END as transcript_optimized, 
+			       summary 
+			FROM meetings WHERE id = $1
+		`, meetingID).Scan(&m.ID, &m.OwnerID, &m.CreatedOn, &title, &transcript, &summary)
+
+		if err != nil {
+			if err == sql.ErrNoRows {
+				http.Error(w, "Meeting not found", http.StatusNotFound)
+			} else {
+				log.Printf("DB Error: %v", err)
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			}
+			return
+		}
+
+		if title.Valid { m.Title = title.String }
+		if transcript.Valid { m.Transcript = transcript.String }
+		if summary.Valid { m.Summary = summary.String }
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(m)
+	})
+
+	// GET Meeting List
+	http.HandleFunc("/meeting/list", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		userEmail := r.URL.Query().Get("user_email")
+		if userEmail == "" {
+			http.Error(w, "user_email required", http.StatusBadRequest)
+			return
+		}
+
+		rows, err := db.Query(`
+			SELECT id, title, created_on 
+			FROM meetings 
+			WHERE owner_id = $1 
+			ORDER BY created_on DESC
+		`, userEmail)
+		if err != nil {
+			log.Printf("DB List Error: %v", err)
+			http.Error(w, "Failed to fetch meetings", http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		var meetings []MeetingDetails // reusing struct for simplicity, though could use a lighter one
+		for rows.Next() {
+			var m MeetingDetails
+			var title sql.NullString
+			if err := rows.Scan(&m.ID, &title, &m.CreatedOn); err != nil {
+				log.Printf("Row Scan Error: %v", err)
+				continue
+			}
+			if title.Valid { m.Title = title.String }
+			meetings = append(meetings, m)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(meetings)
+	})
+
 	http.HandleFunc("/meeting/create", func(w http.ResponseWriter, r *http.Request) {
-		// CORS headers
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
@@ -109,12 +220,15 @@ func main() {
 			return
 		}
 
+		// Use timestamp as temporary title
+		tempTitle := time.Now().Format("Meeting 2006-01-02 15:04")
+
 		var meetingID int
 		err := db.QueryRow(`
-			INSERT INTO meetings (owner_id) 
-			VALUES ($1) 
+			INSERT INTO meetings (owner_id, title) 
+			VALUES ($1, $2) 
 			RETURNING id
-		`, req.UserEmail).Scan(&meetingID)
+		`, req.UserEmail, tempTitle).Scan(&meetingID)
 
 		if err != nil {
 			log.Printf("Failed to create meeting: %v", err)

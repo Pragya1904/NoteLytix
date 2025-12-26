@@ -60,7 +60,7 @@ export default function NotelytixApp() {
     return null;
   });
 
-  const { startRecording, stopRecording, transcript, error, isRecording } = useAudioRecorder(userEmail);
+  const { startRecording, stopRecording, transcript, error, isRecording, meetingId } = useAudioRecorder(userEmail);
 
   // Error handling effect
   useEffect(() => {
@@ -90,25 +90,46 @@ export default function NotelytixApp() {
 
   const handlePauseRecording = () => {
     setAppState(APP_STATES.PAUSED);
+    console.log("Recording paused");
   };
 
   const handleResumeRecording = () => {
     setAppState(APP_STATES.RECORDING);
+    console.log("Recording resumed");
   };
 
   const handleGenerateSummary = async () => {
+    if (!meetingId) {
+      console.error("No meeting ID available to generate summary");
+      toast.error("No meeting ID found");
+      return;
+    }
+
+    console.log(`Generating summary for Meeting ID: ${meetingId}`);
     setAppState(APP_STATES.BUFFERING);
+
     try {
-      const fullText = transcript.map(t => t.text).join("\n");
+      // 1. Request summary generation by Meeting ID
       const response = await axios.post('http://localhost:8084/v1/summary', {
-        transcript: fullText
+        meeting_id: meetingId
       });
-      setSummaryContent(response.data.summary || response.data);
+
+      console.log("Summary Response:", response.data);
+
+      const { summary, meeting_title } = response.data;
+
+      // 2. Update State
+      setSummaryContent(summary);
+      if (meeting_title) {
+        setMeetingTitle(meeting_title);
+      }
       setShowSummary(true);
       setAppState(APP_STATES.STOPPED);
+      toast.success("Summary generated successfully!");
+
     } catch (err) {
       console.error("Summary generation failed", err);
-      toast.error("Failed to generate summary");
+      toast.error("Failed to generate summary. Please try again.");
       setAppState(APP_STATES.STOPPED);
     }
   };

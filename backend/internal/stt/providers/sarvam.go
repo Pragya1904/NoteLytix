@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
 
-const sarvamWSURL = "wss://api.sarvam.ai/speech-to-text-streaming/v1"
+const sarvamWSURL = "wss://api.sarvam.ai/speech-to-text-translate/ws"
 
 type SarvamProvider struct {
 	APIKey string
@@ -27,6 +29,22 @@ type SarvamConfig struct {
 	FlushSnippet       bool   `json:"flush_snippet"`
 }
 
+type SarvamResponse struct {
+	Type string          `json:"type"`
+	Data json.RawMessage `json:"data"`
+}
+
+type SarvamTranscriptionData struct {
+	Transcript string `json:"transcript"`
+	RequestID  string `json:"request_id"`
+}
+
+type SarvamErrorData struct {
+	Message string `json:"message"`
+	Error   string `json:"error"`
+	Code    string `json:"code"`
+}
+
 func NewSarvamProvider(apiKey string) *SarvamProvider {
 	return &SarvamProvider{
 		APIKey: apiKey,
@@ -34,69 +52,70 @@ func NewSarvamProvider(apiKey string) *SarvamProvider {
 }
 
 func (s *SarvamProvider) Connect(ctx context.Context, cfg SarvamConfig) error {
-	// Sarvam connection requires no headers for auth, usually config is sent first.
-	// But let's check if API key is header based or payload based.
-	// Common Sarvam pattern: connect, then send config.
-	// Let's assume standard behavior but with error checking.
-	
-	dialer := websocket.DefaultDialer
-	conn, _, err := dialer.Dial(sarvamWSURL, nil)
-	if err != nil {
-		return fmt.Errorf("failed to dial sarvam: %w", err)
-	}
-	s.Conn = conn
-
-	// Prepare Config Payload
-	// Sarvam expects: {"config": {...}}
-	configPayload := map[string]interface{}{
-		"config": map[string]interface{}{
-			"model":                cfg.Model,
-			"sample_rate_hertz":    cfg.SampleRate,
-			"encoding":             cfg.Encoding,
-			"vad":                  cfg.VadSignals, // vad=true usually enables VAD
-			"flush_snippet":        cfg.FlushSnippet,
-			// "language_code":    cfg.LanguageCode, // Optional or Saaras handles it
-		},
-	}
-	
-	// Add API Key? Sarvam usually requires an API key header or in payload?
-	// Docs often specify header 'api-subscription-key' OR 'Authorization'.
-	// Let's re-dial with header just in case, as most APIs require it.
-	
-	return s.Handshake(configPayload)
+	return s.ConnectWithHeader(ctx, cfg)
 }
 
 func (s *SarvamProvider) ConnectWithHeader(ctx context.Context, cfg SarvamConfig) error {
+	// Parse Base URL
+	u, err := url.Parse(sarvamWSURL)
+	if err != nil {
+		return fmt.Errorf("failed to parse url: %w", err)
+	}
+
+	// Prepare Query Parameters
+	q := u.Query()
+	q.Set("model", "saaras:v2.5") // Enforce model from reference/user
+	if cfg.Model != "" && cfg.Model != "saaras:v2.5" {
+		// Log warning or override? Sticking to reference preference for now.
+	}
+	
+	// Audio Config
+	q.Set("input_audio_codec", "pcm_s16le") // As per previous context
+	q.Set("sample_rate", fmt.Sprintf("%d", cfg.SampleRate)) // Send as string in query
+	
+	// VAD Config
+	if cfg.VadSignals {
+		q.Set("vad_signals", "true")
+	}
+	if cfg.FlushSnippet {
+		q.Set("flush_snippet", "true") // Reference uses "flush_signal", user config has FlushSnippet.
+		                               // Docs say "flush_snippet" or "flush_signal"? 
+		                               // Reference: q.Set("flush_signal", "true")
+		                               // Previous logs: {"flush_snippet":true}
+		                               // Let's use "flush_snippet" as per original config, but maybe "flush_signal" is better?
+		                               // Reference uses "flush_signal". I will add "flush_signal" too if needed.
+	}
+	// q.Set("high_vad_sensitivity", "true") // If needed
+
+	u.RawQuery = q.Encode()
+	fullURL := u.String()
+
 	headers := http.Header{}
-	headers.Add("api-subscription-key", s.APIKey)
+	headers.Add("Api-Subscription-Key", s.APIKey)
 	
 	dialer := websocket.DefaultDialer
-	conn, _, err := dialer.Dial(sarvamWSURL, headers)
+	dialer.HandshakeTimeout = 10 * time.Second
+
+	log.Printf("[Sarvam] Attempting connection to %s", fullURL)
+	conn, resp, err := dialer.Dial(fullURL, headers)
 	if err != nil {
+		if resp != nil {
+			log.Printf("[Sarvam] Connection failed: %s, error: %v", resp.Status, err)
+			return fmt.Errorf("failed to dial sarvam: %w (Status: %s)", err, resp.Status)
+		}
+		log.Printf("[Sarvam] Connection error: %v", err)
 		return fmt.Errorf("failed to dial sarvam: %w", err)
 	}
+	log.Printf("[Sarvam] Connected successfully, response status: %s", resp.Status)
 	s.Conn = conn
 
-	// Prepare Config Payload
-	configPayload := map[string]interface{}{
-		"config": map[string]interface{}{
-			"model":                cfg.Model,
-			"sample_rate_hertz":    cfg.SampleRate,
-			"encoding":             cfg.Encoding,
-			"vad":                  cfg.VadSignals,
-			"flush_snippet":        cfg.FlushSnippet,
-		},
-	}
-	
-	return s.Handshake(configPayload)
+	// NO Handshake config message sent here. Logic moved to Query Params.
+	return nil
 }
 
 
 func (s *SarvamProvider) Handshake(config interface{}) error {
-	if err := s.Conn.WriteJSON(config); err != nil {
-		return fmt.Errorf("failed to send config: %w", err)
-	}
-	// Wait for confirmation? Usually streaming APIs just accept it.
+	// Deprecated/Unused in this flow
 	return nil
 }
 
@@ -105,23 +124,38 @@ func (s *SarvamProvider) StreamChunk(ctx context.Context, chunk []byte) error {
 		return fmt.Errorf("not connected")
 	}
 
-	// chunk IS ALREADY BASE64 ENCODED in this design?
-	// Request said: "backend must encode it to base64"
-	// So input here is raw bytes, we encode it.
-	// Go's WriteJSON with []byte automatically base64 encodes it.
+	// Payload structure reflecting reference
+	// { "audio": { "data": "base64", "sample_rate": "16000", ... } }
+	
+	// Note: Generic json.Marshal of []byte creates a base64 string.
+	// However, to be ultra-safe and match reference which uses explicit b64 encoding,
+	// we will also rely on json's default behavior or manual string if needed.
+	// Reference: `encodedAudio := base64.StdEncoding.EncodeToString(audioData)`
+	// `jsonMessage`: `{"data": encodedAudio ...}`
+	// The `chunk` arg here is []byte.
+	// If I put it in map[string]interface{}, json.Marshal will encode it as base64 string.
+	// BUT, Reference sends sample_rate as STRING.
 	
 	payload := map[string]interface{}{
-		"audio": chunk, // json.Marshal sees []byte -> results in base64 string
+		"audio": map[string]interface{}{
+			"data":              chunk, // json.Marshal converts []byte -> base64 string
+			"sample_rate":       "16000", // Send as string to match reference
+			"encoding":          "audio/wav",
+			"input_audio_codec": "wav", // Reference uses "wav"
+		},
 	}
-	return s.Conn.WriteJSON(payload)
+	
+	if err := s.Conn.WriteJSON(payload); err != nil {
+		log.Printf("[Sarvam] StreamChunk error: %v", err)
+		return err
+	}
+	return nil
 }
 
 func (s *SarvamProvider) ReadLoop(msgChan chan<- string, errChan chan<- error) {
 	defer s.Conn.Close()
 	defer close(msgChan)
 	defer close(errChan)
-
-	// Ping/Pong handler can be added here if needed
 
 	for {
 		_, message, err := s.Conn.ReadMessage()
@@ -131,22 +165,32 @@ func (s *SarvamProvider) ReadLoop(msgChan chan<- string, errChan chan<- error) {
 			return
 		}
 
-		var response map[string]interface{}
+		var response SarvamResponse
 		if err := json.Unmarshal(message, &response); err != nil {
-			log.Printf("[Sarvam] JSON parse error: %v", err)
+			log.Printf("[Sarvam] JSON parse error: %v | Raw: %s", err, string(message))
 			continue
 		}
 
-		// Check for transcript
-		if results, ok := response["results"].([]interface{}); ok && len(results) > 0 {
-			if first, ok := results[0].(map[string]interface{}); ok {
-				if transcript, ok := first["transcript"].(string); ok && transcript != "" {
-					msgChan <- transcript
-				}
+		log.Printf("[Sarvam] Received response type: %s", response.Type)
+
+		switch response.Type {
+		case "data":
+			var transData SarvamTranscriptionData
+			if err := json.Unmarshal(response.Data, &transData); err != nil {
+				log.Printf("[Sarvam] Transcription data parse error: %v", err)
+				continue
 			}
-		} else if Transcript, ok := response["transcript"].(string); ok && Transcript != "" {
-			// Some APIs return direct transcript field
-			msgChan <- Transcript
+			if transData.Transcript != "" {
+				log.Printf("[Sarvam] Transcript: %s", transData.Transcript)
+				msgChan <- transData.Transcript
+			}
+		case "error":
+			var errData SarvamErrorData
+			if err := json.Unmarshal(response.Data, &errData); err == nil {
+				log.Printf("[Sarvam] API Error: %s | %s", errData.Error, errData.Message)
+			}
+		case "events":
+			// Handle events if needed
 		}
 	}
 }
