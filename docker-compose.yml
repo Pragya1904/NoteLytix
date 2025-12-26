@@ -1,0 +1,106 @@
+services:
+  # Backend services
+  auth:
+    build:
+      context: ./backend
+      target: dev
+    volumes:
+      - ./backend:/app
+    environment:
+      - PORT=8081
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=user
+      - DB_PASSWORD=password
+      - DB_NAME=notelytix
+    ports:
+      - "8081:8081"
+    command: air -c .air.auth.toml
+    depends_on:
+      - postgres
+
+  stt:
+    build:
+      context: ./backend
+      target: dev
+    volumes:
+      - ./backend:/app
+    environment:
+      - PORT=8082
+      - SARVAM_API_KEY=${SARVAM_API_KEY}
+    ports:
+      - "8082:8082"
+    command: air -c .air.stt.toml
+
+  meetings:
+    build:
+      context: ./backend
+      target: dev
+    volumes:
+      - ./backend:/app
+    environment:
+      - PORT=8083
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=user
+      - DB_PASSWORD=password
+      - DB_NAME=notelytix
+    ports:
+      - "8083:8083"
+    command: air -c .air.meetings.toml
+    depends_on:
+      - postgres
+
+  llm:
+    build:
+      context: ./backend
+      target: dev
+    volumes:
+      - ./backend:/app
+    environment:
+      - PORT=8084
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+    ports:
+      - "8084:8084"
+    command: air -c .air.llm.toml
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=notelytix
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # Frontend service
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    env_file:
+      - ./frontend/.env
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+      - WATCHPACK_POLLING=true
+    develop:
+      watch:
+        - action: sync
+          path: ./frontend
+          target: /app
+          ignore:
+            - node_modules/
+            - build/
+            - .git/
+        - action: rebuild
+          path: ./frontend/package.json
+
+volumes:
+  postgres_data:

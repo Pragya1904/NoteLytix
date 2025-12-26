@@ -1,0 +1,76 @@
+services:
+  auth:
+    build:
+      context: ./backend
+      target: dev
+    volumes:
+      - ./backend:/app
+    env_file:
+      - ./backend/.env
+    environment:
+      - PORT=8081
+      - DB_HOST=postgres
+    ports:
+      - "8081:8081"
+    command: air -c .air.auth.toml
+    depends_on:
+      - postgres
+
+  stt:
+    build:
+      context: ./backend
+      target: dev
+    volumes:
+      - ./backend:/app
+    env_file:
+      - ./backend/.env
+    environment:
+      - PORT=8082
+    ports:
+      - "8082:8082"
+    command: air -c .air.stt.toml
+
+  meetings:
+    build:
+      context: ./backend
+      target: dev
+    volumes:
+      - ./backend:/app
+    env_file:
+      - ./backend/.env
+    environment:
+      - PORT=8083
+      - DB_HOST=postgres
+    ports:
+      - "8083:8083"
+    command: air -c .air.meetings.toml
+    depends_on:
+      - postgres
+
+  llm:
+    build:
+      context: ./backend
+      target: dev
+    volumes:
+      - ./backend:/app
+    env_file:
+      - ./backend/.env
+    environment:
+      - PORT=8084
+    ports:
+      - "8084:8084"
+    command: air -c .air.llm.toml
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=notelytix
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:

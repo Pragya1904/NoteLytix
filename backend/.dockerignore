@@ -1,0 +1,7 @@
+# Backend .dockerignore
+.env
+.git
+tmp/
+*.log
+.air.*.toml
+vendor/
