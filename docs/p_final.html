@@ -1,0 +1,1112 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pragya Mugale - Backend Portfolio</title>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+    <style>
+        /* ============================================
+           CSS VARIABLES - Color Scheme
+           ============================================ */
+        :root {
+            --bg-dark: #0d1117;
+            --bg-card: #161b22;
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+            --accent-pink: #ec4899;
+            --accent-cyan: #22d3ee;
+            --accent-yellow: #fbbf24;
+            --accent-purple: #a78bfa;
+            --accent-green: #10b981;
+            --border-color: #30363d;
+        }
+
+        /* ============================================
+           BASE STYLES
+           ============================================ */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            color: var(--text-primary);
+            background: var(--bg-dark);
+            line-height: 1.6;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* ============================================
+           FLOATING KEYWORDS BACKGROUND
+           ============================================ */
+        .keywords-background {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            pointer-events: none;
+            overflow: hidden;
+        }
+
+        .keyword {
+            position: absolute;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            font-weight: 500;
+            border: 1px solid;
+            white-space: nowrap;
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+
+        /* Category Colors for Keywords */
+        .keyword.backend {
+            color: var(--accent-pink);
+            border-color: var(--accent-pink);
+            background: rgba(236, 72, 153, 0.1);
+        }
+
+        .keyword.languages {
+            color: var(--accent-cyan);
+            border-color: var(--accent-cyan);
+            background: rgba(34, 211, 238, 0.1);
+        }
+
+        .keyword.ai {
+            color: var(--accent-yellow);
+            border-color: var(--accent-yellow);
+            background: rgba(251, 191, 36, 0.1);
+        }
+
+        .keyword.databases {
+            color: var(--accent-purple);
+            border-color: var(--accent-purple);
+            background: rgba(167, 139, 250, 0.1);
+        }
+
+        .keyword.devops {
+            color: var(--accent-green);
+            border-color: var(--accent-green);
+            background: rgba(16, 185, 129, 0.1);
+        }
+
+        /* Floating Animation */
+        @keyframes float {
+
+            0%,
+            100% {
+                transform: translateY(0) translateX(0);
+            }
+
+            25% {
+                transform: translateY(-15px) translateX(8px);
+            }
+
+            50% {
+                transform: translateY(-8px) translateX(-8px);
+            }
+
+            75% {
+                transform: translateY(-20px) translateX(5px);
+            }
+        }
+
+        /* ============================================
+           NAVIGATION BAR
+           ============================================ */
+        .navbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 100;
+            background: rgba(13, 17, 23, 0.95);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border-color);
+            padding: 16px 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .navbar-brand {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--accent-pink);
+            text-decoration: none;
+            transition: opacity 0.2s ease;
+        }
+
+        .navbar-brand:hover {
+            opacity: 0.8;
+        }
+
+        .navbar-links {
+            display: flex;
+            gap: 32px;
+            align-items: center;
+        }
+
+        .navbar-links a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            transition: color 0.2s ease;
+        }
+
+        .navbar-links a:hover {
+            color: var(--text-primary);
+        }
+
+        .social-icons {
+            display: flex;
+            gap: 16px;
+        }
+
+        .social-icons a {
+            color: var(--text-secondary);
+            transition: color 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .social-icons a:hover {
+            color: var(--accent-pink);
+        }
+
+        .social-icons svg {
+            width: 22px;
+            height: 22px;
+        }
+
+        /* ============================================
+           MAIN CONTAINER
+           ============================================ */
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 100px 40px 60px;
+            position: relative;
+            z-index: 1;
+        }
+
+        section {
+            margin-bottom: 80px;
+        }
+
+        /* ============================================
+           HERO / COVER SECTION
+           ============================================ */
+        .cover {
+            min-height: calc(100vh - 100px);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            gap: 1.5rem;
+        }
+
+        .cover h1 {
+            font-size: clamp(2.5rem, 8vw, 4rem);
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            background: linear-gradient(135deg, var(--text-primary), var(--accent-pink));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .cover .role {
+            font-size: clamp(1.1rem, 3vw, 1.5rem);
+            color: var(--accent-pink);
+            font-weight: 500;
+            margin-bottom: 0.5rem;
+        }
+
+        .cover .summary {
+            font-size: clamp(1rem, 2vw, 1.125rem);
+            color: var(--text-secondary);
+            max-width: 600px;
+            margin: 0 auto;
+            line-height: 1.8;
+        }
+
+        /* ============================================
+           SECTION HEADERS
+           ============================================ */
+        h2 {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 3px solid var(--accent-pink);
+            display: inline-block;
+        }
+
+        /* ============================================
+           SKILLS SECTION
+           ============================================ */
+        .skills-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 24px;
+            justify-content: center;
+            margin: 24px 0 40px;
+            padding: 24px;
+            background: var(--bg-card);
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        .legend-dot {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+        }
+
+        .legend-dot.backend {
+            background: var(--accent-pink);
+        }
+
+        .legend-dot.languages {
+            background: var(--accent-cyan);
+        }
+
+        .legend-dot.ai {
+            background: var(--accent-yellow);
+        }
+
+        .legend-dot.databases {
+            background: var(--accent-purple);
+        }
+
+        .legend-dot.devops {
+            background: var(--accent-green);
+        }
+
+        /* Skills Grid */
+        .skills-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 24px;
+            margin-top: 24px;
+        }
+
+        .skill-category {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 24px;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .skill-category:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            border-color: var(--accent-pink);
+        }
+
+        .skill-category h3 {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .skill-category h3 .dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+
+        .skill-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .skill-tag {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            padding: 6px 12px;
+            border-radius: 16px;
+            border: 1px solid;
+        }
+
+        .skill-tag.backend {
+            color: var(--accent-pink);
+            border-color: var(--accent-pink);
+            background: rgba(236, 72, 153, 0.1);
+        }
+
+        .skill-tag.languages {
+            color: var(--accent-cyan);
+            border-color: var(--accent-cyan);
+            background: rgba(34, 211, 238, 0.1);
+        }
+
+        .skill-tag.ai {
+            color: var(--accent-yellow);
+            border-color: var(--accent-yellow);
+            background: rgba(251, 191, 36, 0.1);
+        }
+
+        .skill-tag.databases {
+            color: var(--accent-purple);
+            border-color: var(--accent-purple);
+            background: rgba(167, 139, 250, 0.1);
+        }
+
+        .skill-tag.devops {
+            color: var(--accent-green);
+            border-color: var(--accent-green);
+            background: rgba(16, 185, 129, 0.1);
+        }
+
+        /* ============================================
+           PROJECT CARDS
+           ============================================ */
+        .project-card,
+        .experience-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 32px;
+            margin-bottom: 32px;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .project-card:hover,
+        .experience-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            border-color: var(--accent-pink);
+        }
+
+        .project-header {
+            margin-bottom: 1.5rem;
+        }
+
+        .project-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 0.75rem;
+        }
+
+        .tech-stack {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.875rem;
+            color: var(--accent-cyan);
+            background: rgba(34, 211, 238, 0.1);
+            padding: 10px 14px;
+            border-radius: 8px;
+            display: inline-block;
+            border: 1px solid rgba(34, 211, 238, 0.2);
+        }
+
+        .section-title {
+            font-size: 0.875rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--accent-pink);
+            margin: 1.5rem 0 0.75rem 0;
+        }
+
+        .project-card p,
+        .experience-card p {
+            color: var(--text-secondary);
+            margin-bottom: 1rem;
+        }
+
+        .project-card ul,
+        .experience-card ul {
+            list-style-type: none;
+        }
+
+        .project-card li,
+        .experience-card li {
+            margin-bottom: 0.75rem;
+            position: relative;
+            padding-left: 1.5rem;
+            color: var(--text-secondary);
+        }
+
+        .project-card li::before,
+        .experience-card li::before {
+            content: "▹";
+            position: absolute;
+            left: 0;
+            color: var(--accent-pink);
+            font-weight: bold;
+        }
+
+        .highlight {
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        /* Added CSS for Project Image */
+        .project-image {
+            width: 100%;
+            height: auto;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            margin: 1.5rem 0;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        /* ============================================
+           CONTACT SECTION
+           ============================================ */
+        .contact-links {
+            margin-top: 24px;
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .contact-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 24px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 14px;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            border: 1px solid var(--border-color);
+            background: var(--bg-card);
+        }
+
+        .contact-link:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .contact-link.email {
+            color: var(--accent-pink);
+            border-color: var(--accent-pink);
+        }
+
+        .contact-link.linkedin {
+            color: var(--accent-cyan);
+            border-color: var(--accent-cyan);
+        }
+
+        .contact-link.github {
+            color: var(--text-primary);
+        }
+
+        /* ============================================
+           FOOTER
+           ============================================ */
+        .footer {
+            text-align: center;
+            padding: 40px;
+            border-top: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        .footer-brand {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-secondary);
+        }
+
+        .footer-brand svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        /* ============================================
+           RESPONSIVE DESIGN
+           ============================================ */
+        @media (max-width: 768px) {
+            .navbar {
+                padding: 12px 20px;
+            }
+
+            .navbar-links {
+                display: none;
+            }
+
+            .container {
+                padding: 80px 20px 40px;
+            }
+
+            .keyword {
+                font-size: 10px;
+                padding: 5px 10px;
+            }
+
+            h2 {
+                font-size: 1.5rem;
+            }
+
+            .project-card {
+                padding: 20px;
+            }
+
+            .skills-legend {
+                gap: 16px;
+                padding: 16px;
+            }
+
+            .skills-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* ============================================
+           PRINT STYLES
+           ============================================ */
+        @media print {
+
+            .keywords-background,
+            .navbar {
+                display: none;
+            }
+
+            body {
+                background: white;
+                color: black;
+            }
+
+            .project-card,
+            .skill-category {
+                background: white;
+                border: 1px solid #ccc;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <!-- ============================================
+         FLOATING KEYWORDS BACKGROUND
+         ============================================ -->
+    <div class="keywords-background" id="keywordsBg"></div>
+
+    <!-- ============================================
+         NAVIGATION BAR
+         ============================================ -->
+    <nav class="navbar">
+        <a href="#" class="navbar-brand">Pragya Mugale</a>
+        <div class="navbar-links">
+            <a href="#about">About</a>
+            <a href="#skills">Skills</a>
+            <a href="#projects">Projects</a>
+            <a href="#experience">Experience</a>
+            <a href="#contact">Contact</a>
+        </div>
+        <div class="social-icons">
+            <a href="https://github.com/Pragya1904" target="_blank" aria-label="GitHub">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207
+                        11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729
+                        1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304
+                        3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381
+                        1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399
+                        3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242
+                        2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823
+                        1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386
+                        0-6.627-5.373-12-12-12z" />
+                </svg>
+            </a>
+            <a href="https://www.linkedin.com/in/pragya-ravindrakumar-mugale/" target="_blank" aria-label="LinkedIn">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136
+                        2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267
+                        5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0
+                        2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225
+                        0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24
+                        22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
+                </svg>
+            </a>
+            <a href="mailto:pragya04r@gmail.com" aria-label="Email">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8
+                        5-8-5V6l8 5 8-5v2z" />
+                </svg>
+            </a>
+        </div>
+    </nav>
+
+    <!-- ============================================
+         MAIN CONTENT
+         ============================================ -->
+    <div class="container">
+        <!-- Hero Section -->
+        <section class="cover" id="about">
+            <div>
+                <h1>Pragya Mugale</h1>
+                <div class="role">Backend Engineer / Software Engineer</div>
+                <p class="summary">
+                    Building scalable distributed systems and high-throughput backend services.
+                    Focused on architectural clarity, performance optimization, and end-to-end ownership.
+                </p>
+            </div>
+        </section>
+
+        <!-- Skills Section -->
+        <section id="skills">
+            <h2>Skills</h2>
+
+            <!-- Legend -->
+            <div class="skills-legend">
+                <div class="legend-item">
+                    <span class="legend-dot backend"></span>
+                    <span>Backend</span>
+                </div>
+                <div class="legend-item">
+                    <span class="legend-dot languages"></span>
+                    <span>Languages</span>
+                </div>
+                <div class="legend-item">
+                    <span class="legend-dot ai"></span>
+                    <span>AI/Tools</span>
+                </div>
+                <div class="legend-item">
+                    <span class="legend-dot databases"></span>
+                    <span>Databases</span>
+                </div>
+                <div class="legend-item">
+                    <span class="legend-dot devops"></span>
+                    <span>DevOps</span>
+                </div>
+            </div>
+
+            <!-- Skills Grid -->
+            <div class="skills-grid">
+                <!-- Programming Languages -->
+                <div class="skill-category">
+                    <h3><span class="dot" style="background: var(--accent-cyan);"></span>Programming Languages</h3>
+                    <div class="skill-tags">
+                        <span class="skill-tag languages">Go (Golang)</span>
+                        <span class="skill-tag languages">Python</span>
+                        <span class="skill-tag languages">C++</span>
+                    </div>
+                </div>
+
+                <!-- Backend Frameworks -->
+                <div class="skill-category">
+                    <h3><span class="dot" style="background: var(--accent-pink);"></span>Backend Frameworks</h3>
+                    <div class="skill-tags">
+                        <span class="skill-tag backend">Django</span>
+                        <span class="skill-tag backend">FastAPI</span>
+                        <span class="skill-tag backend">Flask</span>
+                        <span class="skill-tag backend">REST APIs</span>
+                        <span class="skill-tag backend">gRPC</span>
+                    </div>
+                </div>
+
+                <!-- Databases -->
+                <div class="skill-category">
+                    <h3><span class="dot" style="background: var(--accent-purple);"></span>Databases & Data Stores
+                    </h3>
+                    <div class="skill-tags">
+                        <span class="skill-tag databases">DynamoDB</span>
+                        <span class="skill-tag databases">PostgreSQL</span>
+                        <span class="skill-tag databases">ScyllaDB</span>
+                        <span class="skill-tag databases">MongoDB</span>
+                        <span class="skill-tag databases">MySQL</span>
+                        <span class="skill-tag databases">Redis</span>
+                    </div>
+                </div>
+
+                <!-- Cloud & DevOps -->
+                <div class="skill-category">
+                    <h3><span class="dot" style="background: var(--accent-green);"></span>Cloud & DevOps</h3>
+                    <div class="skill-tags">
+                        <span class="skill-tag devops">AWS</span>
+                        <span class="skill-tag devops">OCI</span>
+                        <span class="skill-tag devops">GCP</span>
+                        <span class="skill-tag devops">Docker</span>
+                        <span class="skill-tag devops">Kubernetes</span>
+                        <span class="skill-tag devops">Jenkins</span>
+                        <span class="skill-tag devops">Grafana</span>
+                    </div>
+                </div>
+
+                <!-- Version Control & Tools -->
+                <div class="skill-category">
+                    <h3><span class="dot" style="background: var(--accent-green);"></span>Version Control &
+                        Collaboration</h3>
+                    <div class="skill-tags">
+                        <span class="skill-tag devops">Git</span>
+                        <span class="skill-tag devops">GitHub</span>
+                        <span class="skill-tag devops">Bitbucket</span>
+                        <span class="skill-tag devops">Jira</span>
+                        <span class="skill-tag devops">Confluence</span>
+                    </div>
+                </div>
+
+                <!-- AI Tools -->
+                <div class="skill-category">
+                    <h3><span class="dot" style="background: var(--accent-yellow);"></span>AI Tools & IDEs</h3>
+                    <div class="skill-tags">
+                        <span class="skill-tag ai">Cursor</span>
+                        <span class="skill-tag ai">Antigravity</span>
+                        <span class="skill-tag ai">n8n</span>
+                        <span class="skill-tag ai">Granola</span>
+                        <span class="skill-tag ai">Whispr Flow</span>
+                        <span class="skill-tag ai">Emergent</span>
+                    </div>
+                </div>
+
+                <!-- Messaging & Streaming -->
+                <div class="skill-category">
+                    <h3><span class="dot" style="background: var(--accent-pink);"></span>Messaging & Caching</h3>
+                    <div class="skill-tags">
+                        <span class="skill-tag backend">RabbitMQ</span>
+                        <span class="skill-tag backend">WebSockets</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Experience Section -->
+        <section id="experience">
+            <h2>Experience</h2>
+            <div class="experience-card">
+                <div class="project-title">Backend Engineer @ Convin</div>
+                <div class="tech-stack">Go • ScyllaDB • DynamoDB • RabbitMQ</div>
+                <div class="section-title">Key Impact</div>
+                <ul>
+                    <li>Designed and implemented a <span class="highlight">write-optimized Activity Logging
+                            Service</span> handling millions of daily events.</li>
+                    <li>Reduced query latency by 40% through efficient schema design in <span class="highlight">ScyllaDB
+                            and DynamoDB</span>.</li>
+                    <li>Ensured system durability using <span class="highlight">RabbitMQ</span> based asynchronous
+                        processing pipelines.</li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- Projects Section -->
+        <section id="projects">
+            <h2>Projects</h2>
+
+            <!-- NoteLytix Project -->
+            <div class="project-card">
+                <div class="project-header">
+                    <div class="project-title">NoteLytix - Real-time AI Meeting Assistant</div>
+                    <div class="tech-stack">Go • PostgreSQL • WebSockets • Sarvam STT • Gemini AI • Docker • K8s</div>
+                </div>
+
+                <!-- Inserted Image -->
+                <img src="uploaded_image_1766807757315.png" alt="NoteLytix App Screenshot" class="project-image">
+
+                <div class="section-title">Goal</div>
+                <p>Developed a privacy-first, full-stack meeting assistant for real-time transcription and intelligence,
+                    addressing data-sharing concerns of public commercial tools.</p>
+
+                <div class="section-title">System Architecture</div>
+                <ul>
+                    <li><span class="highlight">Real-time STT Pipeline:</span> Designed a high-concurrency WebSocket
+                        server
+                        in Go to handle duplex communication between frontend audio streams and Sarvam AI's STT engine.
+                    </li>
+                    <li><span class="highlight">Microservices Orchestration:</span> Auth, STT, and Meeting services
+                        containerized with Docker and ready for Kubernetes deployment, ensuring service-level isolation.
+                    </li>
+                    <li><span class="highlight">Audio Processing:</span> Engineered efficient binary chunking and
+                        base64
+                        encoding strategies for high-fidelity audio streaming over WebSockets.</li>
+                    <li><span class="highlight">LLM Integration:</span> Built an asynchronous summarization engine
+                        using
+                        Gemini AI to generate structured insights post-meeting.</li>
+                </ul>
+
+                <div class="section-title">Technical Challenges & Decisions</div>
+                <ul>
+                    <li><span class="highlight">Fault-Tolerant Streaming:</span> Implemented session state management
+                        to
+                        handle abrupt WebSocket disconnections and resume transcriptions without data loss.</li>
+                    <li><span class="highlight">Concurrency Management:</span> Leveraged Go routines and mutexes for
+                        thread-safe audio buffering and multi-provider STT dispatching.</li>
+                    <li><span class="highlight">OAuth & Security:</span> Integrated robust authentication using Goth
+                        and
+                        Gorilla sessions, ensuring secure meeting access and data isolation.</li>
+                </ul>
+
+                <div class="section-title">Engineering Judgment</div>
+                <ul>
+                    <li>Treated the project with production-grade seriousness, implementing root cause analysis (RCA)
+                        for
+                        all bugs and maintaining a detailed bug log.</li>
+                    <li>Prioritized a clean separation of concerns between transcription, summarization, and core
+                        session
+                        management.</li>
+                </ul>
+            </div>
+
+            <!-- Convin Project -->
+            <div class="project-card">
+                <div class="project-header">
+                    <div class="project-title">Activity Logging Service @ Convin</div>
+                    <div class="tech-stack">Go • DynamoDB • ScyllaDB • Redis • RabbitMQ • gRPC • Docker • Grafana
+                    </div>
+                </div>
+
+                <div class="section-title">Problem Statement</div>
+                <p>Designed a reliable activity logging system to capture high-volume user and system events across
+                    multiple
+                    products. Needed to handle write-heavy workloads with low latency while supporting concurrent
+                    high-frequency analytics reads.</p>
+
+                <div class="section-title">Architecture & Design</div>
+                <ul>
+                    <li><span class="highlight">Write Path:</span> Decoupled ingestion via a queue-based pipeline
+                        (RabbitMQ)
+                        to absorb traffic spikes and ensure 99.9% durability.</li>
+                    <li><span class="highlight">Storage Strategy:</span> Multi-database approach with DynamoDB for
+                        primary
+                        event persistence and ScyllaDB for optimized sequential reads/analytics.</li>
+                    <li><span class="highlight">Read Path:</span> Implemented independent read paths via internal
+                        gRPC/REST
+                        APIs, ensuring heavy batch processing doesn't degrade ingestion performance.</li>
+                    <li><span class="highlight">Observability:</span> Built exhaustive Grafana dashboards to monitor
+                        queue
+                        depth, consumer lag, and I/O latency.</li>
+                </ul>
+
+                <div class="section-title\">Key Engineering Decisions</div>
+                <ul>
+                    <li><span class="highlight">Asynchronous Ingestion:</span> Prioritized availability and throughput
+                        by
+                        moving persistence logic to background consumers.</li>
+                    <li><span class="highlight">Access Pattern Schema:</span> Designed DynamoDB GSI/LSI strictly
+                        around
+                        application access patterns to prevent hot partitions.</li>
+                    <li><span class="highlight">Idempotency:</span> Guaranteed data integrity through unique event
+                        sequencing and deduplication at the consumer layer.</li>
+                </ul>
+
+                <div class="section-title">Impact</div>
+                <ul>
+                    <li>Successfully handled write-heavy event ingestion with sub-10ms predictable latency.</li>
+                    <li>Improved system resilience through backpressure management and decoupled service layers.</li>
+                    <li>Enabled seamless downstream analytics without any production regressions.</li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- Contact Section -->
+        <section id="contact">
+            <h2>Contact</h2>
+            <div class="project-card">
+                <p>Interested in working together or have questions? Feel free to reach out!</p>
+                <div class="contact-links">
+                    <a href="mailto:pragya@example.com" class="contact-link email">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9
+                                2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z" />
+                        </svg>
+                        Email Me
+                    </a>
+                    <a href="https://linkedin.com/" target="_blank" class="contact-link linkedin">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136
+                                1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0
+                                4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065
+                                0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064
+                                2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0
+                                23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222
+                                0h.003z" />
+                        </svg>
+                        LinkedIn
+                    </a>
+                    <a href="https://github.com/" target="_blank" class="contact-link github">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207
+                                11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729
+                                1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304
+                                3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931
+                                0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301
+                                1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23
+                                3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807
+                                5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589
+                                8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
+                        </svg>
+                        GitHub
+                    </a>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- ============================================
+         FOOTER
+         ============================================ -->
+    <footer class="footer">
+        <div class="footer-brand">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M8 12l2 2 4-4" />
+            </svg>
+            Made by Pragya
+        </div>
+    </footer>
+
+    <!-- ============================================
+         JAVASCRIPT - Floating Keywords Animation
+         ============================================ -->
+    <script>
+        // All skills data with categories
+        const skills = [
+            // Programming Languages
+            { name: 'Go', category: 'languages' },
+            { name: 'Python', category: 'languages' },
+            { name: 'C++', category: 'languages' },
+
+            // Backend Frameworks
+            { name: 'Django', category: 'backend' },
+            { name: 'FastAPI', category: 'backend' },
+            { name: 'Flask', category: 'backend' },
+            { name: 'REST APIs', category: 'backend' },
+            { name: 'gRPC', category: 'backend' },
+            { name: 'WebSockets', category: 'backend' },
+            { name: 'Microservices', category: 'backend' },
+
+            // Databases
+            { name: 'DynamoDB', category: 'databases' },
+            { name: 'PostgreSQL', category: 'databases' },
+            { name: 'ScyllaDB', category: 'databases' },
+            { name: 'MongoDB', category: 'databases' },
+            { name: 'MySQL', category: 'databases' },
+            { name: 'Redis', category: 'databases' },
+
+            // Cloud & DevOps
+            { name: 'AWS', category: 'devops' },
+            { name: 'OCI', category: 'devops' },
+            { name: 'GCP', category: 'devops' },
+            { name: 'Docker', category: 'devops' },
+            { name: 'Kubernetes', category: 'devops' },
+            { name: 'Jenkins', category: 'devops' },
+            { name: 'Grafana', category: 'devops' },
+            { name: 'Git', category: 'devops' },
+            { name: 'GitHub', category: 'devops' },
+            { name: 'Bitbucket', category: 'devops' },
+            { name: 'Jira', category: 'devops' },
+            { name: 'Confluence', category: 'devops' },
+
+            // Messaging & Caching
+            { name: 'RabbitMQ', category: 'backend' },
+
+            // AI Tools
+            { name: 'Cursor', category: 'ai' },
+            { name: 'Antigravity', category: 'ai' },
+            { name: 'n8n', category: 'ai' },
+            { name: 'Granola', category: 'ai' },
+            { name: 'Whispr Flow', category: 'ai' },
+            { name: 'Emergent', category: 'ai' },
+            { name: 'Gemini AI', category: 'ai' },
+
+            // Additional
+            { name: 'System Design', category: 'databases' },
+            { name: 'Algorithms', category: 'databases' },
+        ];
+
+        // Create floating keywords
+        function createKeywords() {
+            const container = document.getElementById('keywordsBg');
+            if (!container) return;
+
+            const viewportWidth = window.innerWidth;
+            const viewportHeight = document.documentElement.scrollHeight || 3000;
+
+            // Clear existing keywords
+            container.innerHTML = '';
+
+            skills.forEach((skill, index) => {
+                const keyword = document.createElement('div');
+                keyword.className = `keyword ${skill.category}`;
+                keyword.textContent = skill.name;
+
+                // Random position across the entire page height
+                const x = Math.random() * (viewportWidth - 120);
+                const y = Math.random() * viewportHeight;
+
+                // Random animation settings
+                const delay = Math.random() * 15;
+                const duration = 18 + Math.random() * 12;
+
+                keyword.style.left = `${x}px`;
+                keyword.style.top = `${y}px`;
+                keyword.style.animationDelay = `${delay}s`;
+                keyword.style.animationDuration = `${duration}s`;
+                keyword.style.animationName = 'float';
+                keyword.style.animationTimingFunction = 'ease-in-out';
+                keyword.style.animationIterationCount = 'infinite';
+
+                // Vary opacity
+                keyword.style.opacity = 0.15 + Math.random() * 0.25;
+
+                container.appendChild(keyword);
+            });
+        }
+
+        // Initialize when DOM is ready
+        document.addEventListener('DOMContentLoaded', function () {
+            createKeywords();
+
+            // Recreate on window resize (debounced)
+            let resizeTimeout;
+            window.addEventListener('resize', function () {
+                clearTimeout(resizeTimeout);
+                resizeTimeout = setTimeout(createKeywords, 300);
+            });
+        });
+
+        // Smooth scroll for navigation links
+        document.querySelectorAll('a[href^="#"]').forEach(function (anchor) {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const targetId = this.getAttribute('href');
+                const target = document.querySelector(targetId);
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+
+</html>

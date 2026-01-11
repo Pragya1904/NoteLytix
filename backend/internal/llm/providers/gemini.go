@@ -3,7 +3,6 @@ package providers
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 
 	"google.golang.org/genai"
@@ -35,9 +34,7 @@ func NewGeminiProvider(ctx context.Context, model string) (*GeminiProvider, erro
 	}, nil
 }
 
-func (g *GeminiProvider) GenerateSummary(ctx context.Context, transcript string) (string, error) {
-	prompt := fmt.Sprintf("Please summarize the following meeting transcript:\n\n%s", transcript)
-	
+func (g *GeminiProvider) GenerateSummary(ctx context.Context, prompt string) (string, error) {
 	result, err := g.Client.Models.GenerateContent(
 		ctx,
 		g.Model,

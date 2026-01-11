@@ -1,44 +1,48 @@
-# Progress Report - December 15, 2024
+# Progress Report - January 10, 2026
 
 ## Achievements
-1.  **Frontend Infrastructure**
-    - Dockerized Frontend using `node:20-alpine` to support `react-router-dom` v7.
-    - Configured Docker networking to allow Frontend-Backend communication.
-    - Fixed initial rendering issues.
 
-2.  **Authentication (Google OAuth)**
-    - Implemented Backend `auth` service with `goth` and PostgreSQL `users` table.
-    - Implemented Frontend login flow: Redirect to Backend -> Handle Callback -> Store JWT.
-    - Verified End-to-End Authentication flow works (User ID/Email captured).
+### 1. Model Unification & Data Integrity
+- **Unified User Model**: Standardized `User` struct in `internal/models/models.go` and synced across `auth` and `meetings` services.
+- **Type Standardized**: Switched all Meeting IDs from `int` to `uint` (coordinated with PostgreSQL `SERIAL`).
+- **Meeting State Persistence**: Enabled `localStorage` tracking of `currentMeetingId` on the frontend, allowing sessions to survive browser crashes or reloads.
 
-3.  **Audio Streaming & Meetings Architecture**
-    - **Meetings Service**: Created PostgreSQL `meetings` table and `POST /meeting/create` API.
-    - **STT Service**: Implemented Event-Driven WebSocket Protocol:
-        - Handshake: `start_meeting` -> `connecting_stt` -> `connected_stt`.
-        - Audio: Binary Int16 PCM streaming.
-        - Controls: `pause_meeting`, `resume_meeting`, `end_meeting`, `keep_alive`.
-    - **Frontend Recorder**: Refactored `useAudioRecorder` hook to match the new protocol and handle audio queueing.
+### 2. Meeting Finalization Flow
+- **File-Based Transcripts**: STT service now saves transcripts to a shared volume (`transcripts_data`) in `{DD-MM-YY}_{id}.txt` format.
+- **Async LLM Trigger**: STT service triggers LLM generation asynchronously after the meeting ends.
+- **Model Agnostic LLM**:
+  - `LITE_MODEL` (Gemini Flash) used for rapid Meeting Title generation.
+  - `REGULAR_MODEL` (Gemini Pro) used for deep Meeting Summary generation.
+- **Title Polling**: Frontend automatically polls the meetings service for title updates once a recording stops.
 
-4.  **Bug Fixes** (Detailed in `docs/bugs.md`)
-    - Fixed backend build errors (unused imports).
-    - Fixed Frontend runtime crash (`useEffect` reference).
-    - Fixed invalid email parameter in `createMeeting` request by decoding JWT.
-    - Attempted fix for WebSocket race conditions using `isConnecting` ref.
+### 3. Developer Experience (DX)
+- **Hot-Reloading Everywhere**: Integrated `air` into all Go microservices (`auth`, `stt`, `meetings`, `llm`).
+- **Single Stack Management**: Unified frontend and all backend services into one `docker-compose.yml`.
+- **Automated Startup**: Enhanced `run_project.ps1` for one-click development start.
 
-## Current status & Blockers
-- **Immediate Disconnection**: When "Start Recording" is clicked, the User sees a "Connection error" toast immediately, and the UI resets to "IDLE" (Start Recording button reappears).
-- **Socket Behavior**: The WebSocket (`ws://localhost:8082/...`) likely opens and immediately closes or errors out, triggering the frontend `onerror` handler.
-- **No Handshake**: No handshake messages are exchanged before the error occurs.
+### 4. Robustness & Polishing
+- **Controlled Title Editing**: Implemented auto-saving titles on `blur` or `Enter` key.
+- **Database Decoupling**: Fixed startup race conditions by removing hardware foreign key dependencies between microservices.
 
-## Next Steps (To Resume)
-1.  **Debug WebSocket Error**:
-    - Check Frontend Console for the exact `WebSocket error` object details (is it `ERR_CONNECTION_REFUSED` or a closed code?).
-    - Check Backend `stt` Service Logs: Does it see the connection attempt at all? If not, it's a network/port mapping issue.
-    - **Hypothesis**: The frontend container cannot reach `localhost:8082` if it's running in Docker but the browser is on the host. Wait, the browser IS on the host. `localhost:8082` *should* work if the port is mapped.
-    - **Check Docker Compose**: Verify `ports: - "8082:8082"` is correctly set for the `stt` service.
+### 5. Historical Summary & Polling
+- **Historical Support**: Added `GET /meeting/generate_summary/{id}` to trigger summary generation for past meetings.
+- **Smart Polling**: Enhanced frontend to poll for both titles and summaries, automatically updating the UI when AI processing completes.
+- **Custom Notes Integration**: Replaced transcript view with a `MeetingNotes` editor for historical meetings.
 
-2.  **Investigate "Multiple Connections"**:
-    - Confirm if the phantom connections persist after the "Hard Refresh" (Ctrl+Shift+R).
+### 6. Navigation & UX Polish
+- **Home Page Placeholder**: Implemented a "Coming soon..." dashboard for analytics.
+- **New Note Routing**: Functional "New Note" button that resets state and routes to the recording view.
+- **Secure Logout**: Replaced immediate logout with an avatar dropdown and a confirmation dialog.
+- **AI Summary Rendering**: Implemented a professional Markdown renderer with custom typography and normalization.
 
-3.  **Verify End-to-End**:
-    - Once connection is stable, verify audio binary chunks are reaching Sarvam AI.
+## Current Status
+- **Backend**: Healthy. Supports historical triggers and live STT/LLM pipelines.
+- **Frontend**: Polished. Handles navigation, interactive note-taking, and async summary detection.
+
+## Next Steps
+1. **Fixing Rewrite Summary Bug**: Ensure the "Rewrite Summary" logic correctly triggers a re-generation event.
+2. **Adding Profile Settings Options**: Expand the user avatar menu with account and profile preferences.
+3. **Improving Summary Formatting**: Further refine the `SummaryRenderer` for better readability and structure.
+4. **Plan Home Page UI/UX**: Design and implement the actual analytics dashboard.
+5. **Work on Search Notes Features**: Implement the search functionality to filter meetings by title or content.
+6. **Copy and Share Summary & More Actions**: Add "Copy to Clipboard", "Share via Link", and other utility actions for summaries.

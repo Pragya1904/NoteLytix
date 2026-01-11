@@ -1,5 +1,5 @@
 # Backend Dockerfile
-FROM golang:1.24-alpine AS builder
+FROM golang:1.25-alpine AS builder
 
 WORKDIR /app
 
@@ -17,9 +17,11 @@ RUN go build -o /bin/meetings ./cmd/meetings
 RUN go build -o /bin/llm ./cmd/llm/llm.go
 
 # Development stage with Air for hot reload
-FROM golang:1.24-alpine AS dev
+FROM golang:1.25-alpine AS dev
 WORKDIR /app
 RUN apk add --no-cache git
+# Install Air for hot reload
+RUN go install github.com/air-verse/air@latest
 COPY . .
 RUN go mod download
 

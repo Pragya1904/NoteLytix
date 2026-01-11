@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -71,12 +72,14 @@ const (
 	EventConnectedSTT   = "connected_stt"
 	EventTranscribedText = "transcribed_text"
 	EventPong           = "keep_alive" // Echo back
+	EventMeetingCreated = "meeting_created"
 	EventError          = "error"
 )
 
 type ControlMessage struct {
 	Event     string `json:"event"`
-	MeetingID int    `json:"meeting_id,omitempty"`
+	MeetingID uint   `json:"meeting_id,omitempty"`
+	UserEmail string `json:"user_email,omitempty"`
 }
 
 func main() {
@@ -112,7 +115,7 @@ func main() {
 			sarvam          *providers.SarvamProvider
 			sarvamMu        sync.Mutex
 			isConnected     bool
-			currentMeetingID int
+			currentMeetingID uint
 			fullTranscript  strings.Builder
 		)
 
@@ -246,8 +249,35 @@ func main() {
 
 				switch control.Event {
 				case EventStartMeeting:
-					log.Printf("[STT] Event: start_meeting (ID: %d)", control.MeetingID)
-					currentMeetingID = control.MeetingID
+					log.Printf("[STT] Event: start_meeting (ID: %d, User: %s)", control.MeetingID, control.UserEmail)
+					
+					if control.MeetingID == 0 {
+						// Create meeting in DB
+						tempTitle := time.Now().Format("Meeting 2006-01-02 15:04")
+						owner := control.UserEmail
+						if owner == "" {
+							owner = "unknown"
+						}
+						
+						err := db.QueryRow(`
+							INSERT INTO meetings (owner_id, title) 
+							VALUES ($1, $2) 
+							RETURNING id
+						`, owner, tempTitle).Scan(&currentMeetingID)
+						
+						if err != nil {
+							log.Printf("[STT] Failed to create meeting: %v", err)
+							sendEvent(EventError, map[string]interface{}{"error": "Failed to create meeting in database"})
+						} else {
+							log.Printf("[STT] Created New Meeting: %d", currentMeetingID)
+							sendEvent(EventMeetingCreated, map[string]interface{}{
+								"meeting_id": currentMeetingID,
+							})
+						}
+					} else {
+						currentMeetingID = control.MeetingID
+					}
+					
 					connectSarvam()
 
 				case EventPauseMeeting:
@@ -262,16 +292,43 @@ func main() {
 					log.Println("[STT] Event: end_meeting")
 					disconnectSarvam()
 					
-					// Save Transcript to DB
+					// Save Transcript to File & DB
 					if currentMeetingID != 0 {
 						finalTranscript := fullTranscript.String()
 						if finalTranscript != "" {
-							log.Printf("[STT] Saving transcript for Meeting %d (Length: %d)", currentMeetingID, len(finalTranscript))
-							_, err := db.Exec("UPDATE meetings SET transcript = $1 WHERE id = $2", finalTranscript, currentMeetingID)
-							if err != nil {
-								log.Printf("[STT] Failed to save transcript: %v", err)
+							// 1. Save to File
+							timestamp := time.Now().Format("02-01-06") // DD-MM-YY
+							filename := fmt.Sprintf("%s_%d.txt", timestamp, currentMeetingID)
+							filepath := fmt.Sprintf("/app/transcripts/%s", filename)
+
+							if err := os.WriteFile(filepath, []byte(finalTranscript), 0644); err != nil {
+								log.Printf("[STT] Failed to write transcript file: %v", err)
 							} else {
-								log.Println("[STT] Transcript saved successfully")
+								log.Printf("[STT] Transcript saved to file: %s", filepath)
+
+								// 2. Update DB with Reference
+								_, err := db.Exec("UPDATE meetings SET transcript_url = $1 WHERE id = $2", filename, currentMeetingID)
+								if err != nil {
+									log.Printf("[STT] Failed to update DB: %v", err)
+								}
+
+								// 3. Trigger Async LLM Task: Generate Title
+								go func() {
+									client := &http.Client{Timeout: 10 * time.Second}
+									payload := map[string]interface{}{
+										"meeting_id": currentMeetingID,
+									}
+									jsonBody, _ := json.Marshal(payload)
+									
+									// LLM Service URL (docker-compose service name)
+									resp, err := client.Post("http://llm:8084/v1/llm/generate_title", "application/json", bytes.NewBuffer(jsonBody))
+									if err != nil {
+										log.Printf("[STT] Failed to trigger Title Generation: %v", err)
+										return
+									}
+									defer resp.Body.Close()
+									log.Printf("[STT] Title Generation Triggered. Status: %s", resp.Status)
+								}()
 							}
 						}
 					}

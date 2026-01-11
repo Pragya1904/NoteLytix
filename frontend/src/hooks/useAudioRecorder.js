@@ -49,20 +49,6 @@ export const useAudioRecorder = (userEmail) => {
         }
     }
 
-    const createMeeting = async () => {
-        try {
-            const response = await fetch('http://localhost:8083/meeting/create', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ user_email: userEmail || 'testuser' })
-            });
-            const data = await response.json();
-            return data.meeting_id;
-        } catch (err) {
-            console.error("Failed to create meeting:", err);
-            throw err;
-        }
-    };
 
     const stopAudioProcessing = () => {
         if (testAudioInterval.current) {
@@ -138,8 +124,8 @@ export const useAudioRecorder = (userEmail) => {
         setConnectionStatus('connecting');
 
         try {
-            const newMeetingId = await createMeeting();
-            setMeetingId(newMeetingId);
+            // Meeting is now created by the backend STT service upon start_meeting event
+            // setMeetingId(newMeetingId);
 
             const stream = await navigator.mediaDevices.getUserMedia({
                 audio: {
@@ -161,7 +147,7 @@ export const useAudioRecorder = (userEmail) => {
                 console.log('WS Connected. Sending Handshake...');
                 ws.current.send(JSON.stringify({
                     event: "start_meeting",
-                    meeting_id: newMeetingId
+                    user_email: userEmail || 'testuser'
                 }));
 
                 keepAliveInterval.current = setInterval(() => {
@@ -185,6 +171,10 @@ export const useAudioRecorder = (userEmail) => {
                         setIsPaused(false);
                         isConnecting.current = false;
                         flushAudioQueueRef();
+                    }
+                    else if (data.event === "meeting_created") {
+                        console.log("Meeting Created:", data.meeting_id);
+                        setMeetingId(data.meeting_id);
                     }
                     else if (data.event === "transcribed_text") {
                         setTranscript(prev => [...prev, {
@@ -261,7 +251,6 @@ export const useAudioRecorder = (userEmail) => {
         startRecording,
         stopRecording,
         pauseRecording,
-        resumeRecording,
         resumeRecording,
         transcript,
         error,

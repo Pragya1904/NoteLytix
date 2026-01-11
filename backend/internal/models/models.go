@@ -6,16 +6,18 @@ import (
 	"github.com/google/uuid"
 )
 
-type Person struct {
-	ID        uuid.UUID `json:"id" gorm:"type:uuid;primary_key"`
-	Username  string    `json:"username"`
-	Email     string    `json:"email" gorm:"unique"`
-	CreatedOn time.Time `json:"created_on"`
+type User struct {
+	ID         uint      `json:"id" gorm:"primary_key"`
+	Email      string    `json:"email" gorm:"unique;not null"`
+	Name       string    `json:"name"`
+	Provider   string    `json:"provider"`
+	ProviderID string    `json:"provider_id"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 type Meeting struct {
-	ID              uuid.UUID `json:"id" gorm:"type:uuid;primary_key"`
-	OwnerID         uuid.UUID `json:"owner_id"`
+	ID              uint      `json:"id" gorm:"primary_key"`
+	OwnerID         string    `json:"owner_id"`
 	CreatedOn       time.Time `json:"created_on"`
 	RecordingURL    string    `json:"recording_url"`
 	TranscriptURL   string    `json:"transcript_url"`
@@ -26,8 +28,8 @@ type Meeting struct {
 
 type Participant struct {
 	ID          uuid.UUID `json:"id" gorm:"type:uuid;primary_key"`
-	MeetingID   uuid.UUID `json:"meeting_id"`
-	PersonID    *uuid.UUID `json:"person_id"`
+	MeetingID   uint      `json:"meeting_id"`
+	PersonID    *uint      `json:"person_id"`
 	DisplayName string    `json:"display_name"`
 	Email       string    `json:"email"`
 	Role        string    `json:"role"`
@@ -36,7 +38,7 @@ type Participant struct {
 
 type Transcript struct {
 	ID           uuid.UUID `json:"id" gorm:"type:uuid;primary_key"`
-	MeetingID    uuid.UUID `json:"meeting_id"`
+	MeetingID    uint      `json:"meeting_id"`
 	S3Path       string    `json:"s3_path"`
 	CreatedOn    time.Time `json:"created_on"`
 	ContentShort string    `json:"content_short"`
@@ -44,7 +46,7 @@ type Transcript struct {
 
 type Summary struct {
 	ID          uuid.UUID `json:"id" gorm:"type:uuid;primary_key"`
-	MeetingID   uuid.UUID `json:"meeting_id"`
+	MeetingID   uint      `json:"meeting_id"`
 	SummaryText string    `json:"summary_text"`
 	LLMModel    string    `json:"llm_model"`
 	CreatedOn   time.Time `json:"created_on"`

@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"github.com/markbates/goth"
 	"github.com/markbates/goth/gothic"
 	"github.com/markbates/goth/providers/google"
+	"notelytix/internal/models"
 )
 
 var db *sql.DB
@@ -129,6 +131,14 @@ func main() {
 		}
 		log.Printf("[Auth] User authenticated: %s (%s)", user.Email, user.UserID)
 
+		// Use shared User model
+		u := models.User{
+			Email:      user.Email,
+			Name:       user.Name,
+			Provider:   user.Provider,
+			ProviderID: user.UserID,
+		}
+
 		// Insert or update user in DB
 		_, err = db.Exec(`
 			INSERT INTO users (email, name, provider, provider_id)
@@ -137,7 +147,7 @@ func main() {
 				name = EXCLUDED.name,
 				provider = EXCLUDED.provider,
 				provider_id = EXCLUDED.provider_id
-		`, user.Email, user.Name, user.Provider, user.UserID)
+		`, u.Email, u.Name, u.Provider, u.ProviderID)
 
 		if err != nil {
 			http.Error(w, "Failed to save user", http.StatusInternalServerError)
@@ -164,6 +174,44 @@ func main() {
 	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("Auth Service is healthy"))
+	})
+
+	// DEBUG: Create User Endpoint (For Integration Tests)
+	http.HandleFunc("/debug/create_user", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var req struct {
+			Email    string `json:"email"`
+			Name     string `json:"name"`
+			Provider string `json:"provider"`
+			UserID   string `json:"user_id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid body", http.StatusBadRequest)
+			return
+		}
+
+		u := models.User{
+			Email:      req.Email,
+			Name:       req.Name,
+			Provider:   req.Provider,
+			ProviderID: req.UserID,
+		}
+
+		_, err := db.Exec(`
+			INSERT INTO users (email, name, provider, provider_id)
+			VALUES ($1, $2, $3, $4)
+			ON CONFLICT (email) DO NOTHING
+		`, u.Email, u.Name, u.Provider, u.ProviderID)
+		
+		if err != nil {
+			log.Printf("Debug Create User Failed: %v", err)
+			http.Error(w, "Failed", http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
 	})
 
 	log.Printf("Auth Service starting on port %s", port)

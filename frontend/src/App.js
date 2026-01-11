@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { useAudioRecorder } from '@/hooks/useAudioRecorder';
+import { groupMeetingsByDate } from './utils/meetingUtils';
+import { useAudioRecorder } from './hooks/useAudioRecorder';
+import SummaryRenderer from './components/SummaryRenderer';
+import MeetingNotes from './components/MeetingNotes';
 import {
   Mic, Square, Pause, Play, MoreHorizontal, Search,
   Plus, Share, MessageSquare, Mail, Folder, Calendar,
@@ -39,6 +42,20 @@ const APP_STATES = {
   STOPPED: 'STOPPED',
 };
 
+const SummaryButton = ({ onClick, hasSummary, animate = false }) => (
+  <Button
+    size="lg"
+    className={cn(
+      "rounded-full px-8 bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/30 h-12 font-medium transition-all hover:shadow-primary/40",
+      animate && "animate-pulse-slow"
+    )}
+    onClick={onClick}
+  >
+    <PenTool className="h-5 w-5 mr-2" />
+    {hasSummary ? 'Rewrite Summary' : 'Generate Summary'}
+  </Button>
+);
+
 export default function NotelytixApp() {
   const [appState, setAppState] = useState(APP_STATES.IDLE);
   const [showSummary, setShowSummary] = useState(false);
@@ -46,6 +63,11 @@ export default function NotelytixApp() {
   const [showSettings, setShowSettings] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [meetingTitle, setMeetingTitle] = useState("Untitled meeting");
+  const [currentView, setCurrentView] = useState('home'); // 'home', 'recording', or 'list'
+  const [meetings, setMeetings] = useState([]);
+  const [isHistoryDetail, setIsHistoryDetail] = useState(false);
+  const [customNotes, setCustomNotes] = useState('');
+  const [showLogoutDialog, setShowLogoutDialog] = useState(false);
 
   const [userEmail, setUserEmail] = useState(() => {
     const token = localStorage.getItem("authToken");
@@ -60,7 +82,16 @@ export default function NotelytixApp() {
     return null;
   });
 
-  const { startRecording, stopRecording, transcript, error, isRecording, meetingId } = useAudioRecorder(userEmail);
+  const {
+    startRecording,
+    stopRecording,
+    pauseRecording,
+    resumeRecording,
+    transcript,
+    error,
+    isRecording,
+    meetingId
+  } = useAudioRecorder(userEmail);
 
   // Error handling effect
   useEffect(() => {
@@ -75,7 +106,11 @@ export default function NotelytixApp() {
     try {
       await startRecording();
       setAppState(APP_STATES.RECORDING);
+      setIsHistoryDetail(false);
       toast.success("Recording started");
+
+      // Trigger title generation after a short delay or when transcript starts?
+      // For now, we wait for backend to do it automatically or we trigger it at the end.
     } catch (err) {
       console.error("Failed to start", err);
       setAppState(APP_STATES.ERROR);
@@ -86,83 +121,217 @@ export default function NotelytixApp() {
     stopRecording();
     setAppState(APP_STATES.STOPPED);
     toast.success("Recording saved");
+
+    // Trigger title generation automatically
+    if (meetingId) {
+      axios.post('http://localhost:8084/v1/llm/generate_title', { meeting_id: meetingId });
+    }
   };
 
   const handlePauseRecording = () => {
+    pauseRecording();
     setAppState(APP_STATES.PAUSED);
     console.log("Recording paused");
   };
 
   const handleResumeRecording = () => {
+    resumeRecording();
     setAppState(APP_STATES.RECORDING);
     console.log("Recording resumed");
   };
 
   const handleGenerateSummary = async () => {
-    if (!meetingId) {
-      console.error("No meeting ID available to generate summary");
-      toast.error("No meeting ID found");
+    // 1. Determine the correct ID to use
+    // If it's history, use the currentMeetingId from local storage
+    // If it's a live recording just stopped, use meetingId from hook
+    const idToUse = isHistoryDetail
+      ? localStorage.getItem("currentMeetingId")
+      : meetingId;
+
+    if (!idToUse) {
+      console.warn("No meeting ID available to generate summary.");
+      toast.error("Please select a meeting or wait for recording to finish.");
       return;
     }
 
-    console.log(`Generating summary for Meeting ID: ${meetingId}`);
+    console.log(`Generating summary for Meeting ID: ${idToUse} (History: ${isHistoryDetail})`);
     setAppState(APP_STATES.BUFFERING);
 
     try {
-      // 1. Request summary generation by Meeting ID
-      const response = await axios.post('http://localhost:8084/v1/summary', {
-        meeting_id: meetingId
-      });
+      if (isHistoryDetail) {
+        // A. Trigger historical summary generation via meetings service
+        await axios.get(`http://localhost:8083/meeting/generate_summary/${idToUse}`);
+        toast.info("Summary generation started...");
+        // Polling will handle the rest via the existing useEffect or a manual trigger
+      } else {
+        // B. Request immediate summary generation for live recording (direct to LLM service)
+        const response = await axios.post('http://localhost:8084/v1/llm/generate_summary', {
+          meeting_id: parseInt(idToUse)
+        });
 
-      console.log("Summary Response:", response.data);
+        console.log("Summary Response:", response.data);
+        const { summary } = response.data;
 
-      const { summary, meeting_title } = response.data;
-
-      // 2. Update State
-      setSummaryContent(summary);
-      if (meeting_title) {
-        setMeetingTitle(meeting_title);
+        // Update State
+        setSummaryContent(summary);
+        setShowSummary(true);
+        setAppState(APP_STATES.STOPPED);
+        toast.success("Summary generated successfully!");
       }
-      setShowSummary(true);
-      setAppState(APP_STATES.STOPPED);
-      toast.success("Summary generated successfully!");
-
     } catch (err) {
       console.error("Summary generation failed", err);
-      toast.error("Failed to generate summary. Please try again.");
-      setAppState(APP_STATES.STOPPED);
+      toast.error("Failed to trigger summary generation.");
+      setAppState(isHistoryDetail ? APP_STATES.IDLE : APP_STATES.STOPPED);
     }
   };
 
-  // Handle Login Redirect
+  const handleViewMeetings = async () => {
+    if (!userEmail) {
+      toast.error("Please sign in first");
+      return;
+    }
+    try {
+      const res = await axios.get(`http://localhost:8083/meeting/list?user_email=${userEmail}`);
+      setMeetings(res.data || []);
+      setCurrentView('list');
+      setIsSidebarOpen(false);
+    } catch (err) {
+      toast.error("Failed to fetch meetings");
+    }
+  };
+
+  const handleSelectMeeting = async (id) => {
+    try {
+      const res = await axios.get(`http://localhost:8083/meeting/${id}`);
+      if (res.data) {
+        setMeetingTitle(res.data.title || "Untitled meeting");
+        setSummaryContent(res.data.summary || null);
+        setShowSummary(!!res.data.summary);
+        // Manual transcript update if needed, but for now we look at the meeting
+        localStorage.setItem("currentMeetingId", id);
+        setCurrentView('recording');
+        setIsHistoryDetail(true);
+        setAppState(APP_STATES.IDLE);
+      }
+    } catch (err) {
+      toast.error("Failed to load meeting details");
+    }
+  };
+
+
   const handleLogin = () => {
     window.location.href = "http://localhost:8081/auth/google";
   };
 
-  // Check for Token on Mount
+  const handleSignOut = () => {
+    localStorage.removeItem("authToken");
+    localStorage.removeItem("currentMeetingId");
+    setAppState(APP_STATES.SIGNIN);
+    setUserEmail(null);
+    setCurrentView('home');
+    setShowLogoutDialog(false);
+  };
+
+  const handleNewNote = () => {
+    setCurrentView('recording');
+    setIsHistoryDetail(false);
+    setAppState(APP_STATES.IDLE);
+    setMeetingTitle("Untitled meeting");
+    setSummaryContent(null);
+    setShowSummary(false);
+    localStorage.removeItem("currentMeetingId");
+    setIsSidebarOpen(false);
+  };
+
+  const handleTitleUpdate = async (newTitle) => {
+    setMeetingTitle(newTitle);
+    const idToUpdate = meetingId || localStorage.getItem("currentMeetingId");
+    if (idToUpdate) {
+      try {
+        await axios.patch('http://localhost:8083/meeting/update', {
+          meeting_id: parseInt(idToUpdate),
+          title: newTitle
+        });
+        toast.success("Title updated");
+      } catch (err) {
+        console.error("Failed to update title", err);
+      }
+    }
+  };
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const token = params.get("token");
+
     if (token) {
       localStorage.setItem("authToken", token);
       try {
         const payload = JSON.parse(atob(token.split('.')[1]));
         setUserEmail(payload.email);
-      } catch (e) {
-        console.error("Failed to decode token", e);
-      }
-      setAppState(APP_STATES.IDLE);
-      // Remove token from URL
+      } catch (e) { console.error(e); }
       window.history.replaceState({}, document.title, window.location.pathname);
+    } else {
+      const storedToken = localStorage.getItem("authToken");
+      if (storedToken) {
+        try {
+          setUserEmail(JSON.parse(atob(storedToken.split('.')[1])).email);
+        } catch (e) { }
+      }
+    }
+
+    const storedMeetingId = localStorage.getItem("currentMeetingId");
+    if (storedMeetingId) {
+      handleSelectMeeting(storedMeetingId);
     }
   }, []);
 
-  const handleSignOut = () => {
-    localStorage.removeItem("authToken");
-    setAppState(APP_STATES.SIGNIN);
-  }
+  // Polling for automated updates (Title & Summary)
+  useEffect(() => {
+    let interval;
+    const shouldPoll = appState === APP_STATES.STOPPED ||
+      appState === APP_STATES.IDLE ||
+      appState === APP_STATES.RECORDING ||
+      appState === APP_STATES.BUFFERING;
 
-  // --- Render Sign In State ---
+    if (shouldPoll) {
+      const idToCheck = meetingId || localStorage.getItem("currentMeetingId");
+      if (idToCheck) {
+        interval = setInterval(async () => {
+          try {
+            const res = await axios.get(`http://localhost:8083/meeting/${idToCheck}`);
+            if (res.data) {
+              // 1. Update Title if it looks like a real title (and not a timestamp)
+              if (res.data.title &&
+                !res.data.title.startsWith("Meeting 20") &&
+                res.data.title !== "Untitled meeting" &&
+                res.data.title !== meetingTitle) {
+                setMeetingTitle(res.data.title);
+              }
+
+              // 2. Update Summary if it's newly available
+              if (res.data.summary && res.data.summary !== summaryContent) {
+                setSummaryContent(res.data.summary);
+                setShowSummary(true);
+
+                // If we were waiting for it, reset the app state
+                if (appState === APP_STATES.BUFFERING) {
+                  setAppState(isHistoryDetail ? APP_STATES.IDLE : APP_STATES.STOPPED);
+                  toast.success("Summary is ready!");
+                }
+              }
+
+              // Stop polling if we got everything we needed in a non-recording state
+              if (appState !== APP_STATES.RECORDING && res.data.summary && res.data.title) {
+                // Potential to clear interval here, but safer to keep it for manual changes
+              }
+            }
+          } catch (e) { /* ignore */ }
+        }, 3000);
+      }
+    }
+    return () => clearInterval(interval);
+  }, [appState, meetingId, summaryContent, meetingTitle, isHistoryDetail]);
+
   if (appState === APP_STATES.SIGNIN) {
     return (
       <div className="flex h-screen w-full bg-[#FAFAFA] items-center justify-center p-4">
@@ -206,32 +375,33 @@ export default function NotelytixApp() {
           </Button>
         </div>
         <div className="px-3 py-2 space-y-1">
-          {['Home', 'Meetings', 'Notes', 'Recordings', 'Settings'].map((item) => (
-            <Button key={item} variant="ghost" className="w-full justify-start text-muted-foreground hover:text-foreground h-10 rounded-lg">
-              {item === 'Home' && <Layout className="mr-3 h-4 w-4" />}
-              {item === 'Meetings' && <Calendar className="mr-3 h-4 w-4" />}
-              {item === 'Notes' && <FileText className="mr-3 h-4 w-4" />}
-              {item === 'Recordings' && <Mic className="mr-3 h-4 w-4" />}
-              {item === 'Settings' && <Settings className="mr-3 h-4 w-4" />}
-              {item}
-            </Button>
-          ))}
+          <Button variant="ghost" className="w-full justify-start text-muted-foreground hover:text-foreground h-10 rounded-lg" onClick={() => setCurrentView('home')}>
+            <Layout className="mr-3 h-4 w-4" /> Home
+          </Button>
+          <Button variant="ghost" className="w-full justify-start text-muted-foreground hover:text-foreground h-10 rounded-lg" onClick={handleViewMeetings}>
+            <Calendar className="mr-3 h-4 w-4" /> Meetings
+          </Button>
+          <Button variant="ghost" className="w-full justify-start text-muted-foreground hover:text-foreground h-10 rounded-lg">
+            <FileText className="mr-3 h-4 w-4" /> Notes
+          </Button>
+          <Button variant="ghost" className="w-full justify-start text-muted-foreground hover:text-foreground h-10 rounded-lg" onClick={() => setShowSettings(true)}>
+            <Settings className="mr-3 h-4 w-4" /> Settings
+          </Button>
         </div>
         <div className="mt-auto p-4 border-t border-border">
           <div className="bg-secondary/50 rounded-lg p-3 flex items-center gap-3">
             <Avatar className="h-8 w-8">
               <AvatarImage src="https://github.com/shadcn.png" />
-              <AvatarFallback>JD</AvatarFallback>
+              <AvatarFallback>{userEmail ? userEmail.substring(0, 2).toUpperCase() : 'JD'}</AvatarFallback>
             </Avatar>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">Jane Doe</p>
-              <p className="text-xs text-muted-foreground truncate">jane@example.com</p>
+              <p className="text-sm font-medium truncate">{userEmail ? userEmail.split('@')[0] : 'User'}</p>
+              <p className="text-xs text-muted-foreground truncate">{userEmail || 'user@example.com'}</p>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Main Content */}
       <div className="flex-1 flex flex-col relative min-w-0 bg-[#FAFAFA]">
         {/* Top Navigation */}
         <header className="h-[60px] bg-white/80 backdrop-blur-md border-b border-border flex items-center justify-between px-6 shrink-0 z-10 sticky top-0">
@@ -252,7 +422,12 @@ export default function NotelytixApp() {
           </div>
 
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="rounded-full h-8 bg-white hover:bg-gray-50 hidden sm:flex border-dashed text-muted-foreground hover:text-foreground">
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-full h-8 bg-white hover:bg-gray-50 hidden sm:flex border-dashed text-muted-foreground hover:text-foreground"
+              onClick={handleNewNote}
+            >
               <Plus className="h-3.5 w-3.5 mr-1.5" />
               New Note
             </Button>
@@ -285,10 +460,21 @@ export default function NotelytixApp() {
               </DropdownMenuContent>
             </DropdownMenu>
 
-            <Avatar className="h-8 w-8 border border-border ml-2 cursor-pointer transition-transform hover:scale-105" onClick={() => setAppState(APP_STATES.SIGNIN)}>
-              <AvatarImage src="https://github.com/shadcn.png" />
-              <AvatarFallback>CN</AvatarFallback>
-            </Avatar>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Avatar className="h-8 w-8 border border-border ml-2 cursor-pointer transition-transform hover:scale-105">
+                  <AvatarImage src="https://github.com/shadcn.png" />
+                  <AvatarFallback>{userEmail ? userEmail.substring(0, 2).toUpperCase() : 'CN'}</AvatarFallback>
+                </Avatar>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuLabel>My Account</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setShowLogoutDialog(true)} className="text-red-600 focus:text-red-600">
+                  <LogOut className="mr-2 h-4 w-4" /> Sign Out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </header>
 
@@ -308,66 +494,77 @@ export default function NotelytixApp() {
           </div>
         )}
 
-        {/* Main Area */}
-        <main className="flex-1 overflow-y-auto p-4 md:p-8 lg:p-10 relative">
-          <div className="max-w-6xl mx-auto h-full flex flex-col">
-
-            {/* Meeting Header */}
-            <div className="text-center space-y-4 mb-8 animate-fade-in shrink-0">
-              <h1 className="text-3xl md:text-4xl font-semibold tracking-tight text-foreground outline-none" contentEditable suppressContentEditableWarning>
-                {meetingTitle}
-              </h1>
-              <div className="flex items-center justify-center gap-3 text-sm">
-                <Badge variant="secondary" className="rounded-full px-3 py-1 font-normal text-muted-foreground bg-white border border-border shadow-sm hover:bg-secondary/80">
-                  <Calendar className="h-3 w-3 mr-2" />
-                  Today
-                </Badge>
-                <Badge variant="secondary" className="rounded-full px-3 py-1 font-normal text-muted-foreground bg-white border border-border shadow-sm hover:bg-secondary/80">
-                  <User className="h-3 w-3 mr-2" />
-                  Me
-                </Badge>
-                <Badge variant="outline" className="rounded-full px-3 py-1 font-normal text-muted-foreground hover:bg-secondary cursor-pointer border-dashed border-border transition-colors">
-                  <Folder className="h-3 w-3 mr-2" />
-                  Add to folder
-                </Badge>
+        <main className="flex-1 overflow-y-auto p-4 md:p-8 relative">
+          {currentView === 'home' && (
+            <div className="max-w-4xl mx-auto h-full flex flex-col items-center justify-center text-center space-y-6">
+              <div className="w-20 h-20 bg-primary/5 rounded-3xl flex items-center justify-center animate-pulse-slow">
+                <Layout className="h-10 w-10 text-primary/40" />
               </div>
+              <div className="space-y-2">
+                <h2 className="text-3xl font-bold tracking-tight text-foreground">Analytics Dashboard</h2>
+                <p className="text-lg text-muted-foreground font-medium">Coming soon...</p>
+              </div>
+              <p className="max-w-md text-muted-foreground/60 leading-relaxed">
+                We're building a powerful analytics suite to help you track meeting productivity
+                and extract insights across all your conversations.
+              </p>
+              <Button
+                onClick={handleNewNote}
+                className="mt-4 rounded-full px-8 bg-primary shadow-lg shadow-primary/20"
+              >
+                <Plus className="mr-2 h-4 w-4" /> Start your first note
+              </Button>
             </div>
+          )}
 
-            {/* Error State Panel */}
-            {appState === APP_STATES.ERROR && (
-              <div className="flex-1 flex items-center justify-center animate-fade-in">
-                <div className="bg-white rounded-2xl p-8 shadow-xl border border-red-100 max-w-md w-full text-center space-y-4 relative overflow-hidden">
-                  <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-red-500" />
-                  <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-2">
-                    <AlertTriangle className="h-6 w-6 text-red-500" />
-                  </div>
-                  <h3 className="text-xl font-semibold text-foreground">Service is currently busy</h3>
-                  <p className="text-muted-foreground">Our transcription provider is temporarily overloaded. Please try again in a few moments.</p>
-                  <div className="pt-4 flex flex-col gap-2">
-                    <Button className="w-full bg-red-600 hover:bg-red-700 text-white rounded-lg" onClick={() => setAppState(APP_STATES.IDLE)}>Retry now</Button>
-                    <Button variant="link" className="text-red-600 text-xs">Report this issue</Button>
-                  </div>
+          {currentView === 'recording' ? (
+            <div className="max-w-6xl mx-auto h-full flex flex-col">
+              {/* Meeting Header */}
+              <div className="text-center space-y-4 mb-8 animate-fade-in shrink-0">
+                <h1
+                  className="text-3xl md:text-4xl font-semibold tracking-tight text-foreground outline-none"
+                  contentEditable
+                  suppressContentEditableWarning
+                  onBlur={(e) => handleTitleUpdate(e.target.innerText)}
+                >
+                  {meetingTitle}
+                </h1>
+                <div className="flex items-center justify-center gap-3 text-sm">
+                  <Badge variant="secondary" className="rounded-full px-3 py-1 font-normal text-muted-foreground bg-white border border-border shadow-sm hover:bg-secondary/80">
+                    <Calendar className="h-3 w-3 mr-2" />
+                    Today
+                  </Badge>
+                  <Badge variant="secondary" className="rounded-full px-3 py-1 font-normal text-muted-foreground bg-white border border-border shadow-sm hover:bg-secondary/80">
+                    <User className="h-3 w-3 mr-2" />
+                    {userEmail ? userEmail.split('@')[0] : 'Me'}
+                  </Badge>
+                  <Badge variant="outline" className="rounded-full px-3 py-1 font-normal text-muted-foreground hover:bg-secondary cursor-pointer border-dashed border-border transition-colors">
+                    <Folder className="h-3 w-3 mr-2" />
+                    Add to folder
+                  </Badge>
                 </div>
               </div>
-            )}
 
-            {/* Dynamic Content Columns */}
-            {appState !== APP_STATES.ERROR && (
+              {/* ... dynamic content columns (Transcript / Summary) ... */}
               <div className="flex-1 flex flex-col lg:flex-row gap-8 min-h-0">
-                {/* Left Column: Transcript */}
-                {(appState === APP_STATES.RECORDING || appState === APP_STATES.PAUSED || appState === APP_STATES.STOPPED || appState === APP_STATES.CONNECTING || appState === APP_STATES.BUFFERING) && (
-                  <div className={cn(
-                    "flex-1 flex flex-col transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]",
-                    showSummary ? "lg:w-1/2" : "w-full"
-                  )}>
+                <div className={cn(
+                  "flex-1 flex flex-col transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]",
+                  showSummary ? "lg:w-1/2" : "w-full"
+                )}>
+                  {isHistoryDetail ? (
+                    <MeetingNotes
+                      initialNotes={customNotes}
+                      onSave={setCustomNotes}
+                    />
+                  ) : (
                     <div className="bg-white rounded-2xl border border-border shadow-sm flex-1 overflow-hidden flex flex-col relative">
 
                       {/* Header for Transcript Box */}
                       <div className="px-4 py-3 border-b border-border bg-gray-50/30 flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <div className={cn("w-2 h-2 rounded-full", appState === APP_STATES.RECORDING ? "bg-red-500 animate-pulse" : "bg-gray-300")} />
+                          <div className={cn("w-2 h-2 rounded-full", (appState === APP_STATES.RECORDING && !isHistoryDetail) ? "bg-red-500 animate-pulse" : "bg-gray-300")} />
                           <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                            {appState === APP_STATES.RECORDING ? 'Live' : 'Transcript'}
+                            {isHistoryDetail ? 'Transcript' : (appState === APP_STATES.RECORDING ? 'Live' : 'Transcript')}
                           </span>
                         </div>
                         {appState === APP_STATES.STOPPED && (
@@ -397,7 +594,7 @@ export default function NotelytixApp() {
 
                       <ScrollArea className="flex-1 p-6">
                         <div className="space-y-6 pb-20">
-                          {transcript.length === 0 && appState !== APP_STATES.CONNECTING && (
+                          {transcript.length === 0 && appState !== APP_STATES.CONNECTING && !isHistoryDetail && (
                             <div className="text-center text-muted-foreground py-20 flex flex-col items-center">
                               <div className="w-12 h-12 bg-secondary rounded-full flex items-center justify-center mb-3">
                                 <Mic className="h-5 w-5 text-muted-foreground" />
@@ -421,11 +618,11 @@ export default function NotelytixApp() {
                         </div>
                       </ScrollArea>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
 
-                {/* Right Column: Editor / Summary */}
-                {(appState === APP_STATES.IDLE || appState === APP_STATES.RECORDING || appState === APP_STATES.STOPPED || appState === APP_STATES.BUFFERING) && !showSummary && (
+                {/* Right Column: Editor */}
+                {!showSummary && !isHistoryDetail && (
                   <div className={cn(
                     "flex flex-col transition-all duration-500",
                     appState === APP_STATES.IDLE ? "w-full" : "hidden lg:flex lg:w-1/2 lg:border-l lg:border-dashed lg:border-border lg:pl-8"
@@ -451,9 +648,7 @@ export default function NotelytixApp() {
                     <ScrollArea className="flex-1 p-6 bg-white/50">
                       <div className="space-y-8">
                         <section className="animate-fade-in" style={{ animationDelay: '0.1s' }}>
-                          <div className="prose prose-sm max-w-none text-foreground/90 whitespace-pre-wrap">
-                            {typeof summaryContent === 'string' ? summaryContent : JSON.stringify(summaryContent, null, 2)}
-                          </div>
+                          <SummaryRenderer content={summaryContent} />
                         </section>
                       </div>
                     </ScrollArea>
@@ -463,18 +658,47 @@ export default function NotelytixApp() {
                     </div>
                   </div>
                 )}
-
               </div>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className="max-w-4xl mx-auto space-y-12">
+              {groupMeetingsByDate(meetings).map(([date, items]) => (
+                <div key={date} className="space-y-4">
+                  <h3 className="text-sm font-medium text-muted-foreground/80 pl-2">{date}</h3>
+                  <div className="space-y-3">
+                    {items.map((m) => (
+                      <div
+                        key={m.id}
+                        onClick={() => handleSelectMeeting(m.id)}
+                        className="group bg-white p-6 rounded-2xl border border-border hover:border-primary/30 hover:shadow-md transition-all cursor-pointer flex items-center gap-5"
+                      >
+                        <div className="w-12 h-12 rounded-xl bg-gray-50 flex items-center justify-center group-hover:bg-primary/5 transition-colors">
+                          <FileText className="h-6 w-6 text-muted-foreground group-hover:text-primary transition-colors" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h4 className="text-lg font-semibold text-foreground truncate group-hover:text-primary transition-colors">{m.title || "Untitled meeting"}</h4>
+                          <p className="text-sm text-muted-foreground mt-1">Participants placeholder</p>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-sm text-muted-foreground font-medium uppercase tracking-tighter">
+                            {new Date(m.created_on).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </main>
 
-        {/* Bottom Floating Control Bar - Visible when not in Error */}
-        {appState !== APP_STATES.ERROR && (
+        {/* Bottom Floating Control Bar */}
+        {currentView === 'recording' && appState !== APP_STATES.ERROR && (
           <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-30 max-w-[90vw]">
             <div className="bg-white/90 backdrop-blur-xl border border-border/50 shadow-2xl shadow-black/5 rounded-full p-1.5 flex items-center gap-2 pl-2 pr-2 ring-1 ring-black/5 transition-all hover:scale-[1.02] duration-300">
 
-              {appState === APP_STATES.IDLE && (
+              {appState === APP_STATES.IDLE && !isHistoryDetail && (
                 <Button
                   size="lg"
                   className="rounded-full px-8 bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/30 h-12 font-medium transition-all hover:shadow-primary/40"
@@ -485,14 +709,14 @@ export default function NotelytixApp() {
                 </Button>
               )}
 
-              {(appState === APP_STATES.CONNECTING || appState === APP_STATES.BUFFERING) && (
-                <Button disabled size="lg" className="rounded-full px-8 bg-secondary text-muted-foreground h-12 opacity-80">
-                  <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-                  {appState === APP_STATES.BUFFERING ? 'Sending...' : 'Connecting...'}
-                </Button>
+              {(appState === APP_STATES.IDLE && isHistoryDetail) && (
+                <SummaryButton
+                  onClick={handleGenerateSummary}
+                  hasSummary={!!summaryContent}
+                />
               )}
 
-              {(appState === APP_STATES.RECORDING || appState === APP_STATES.PAUSED) && (
+              {appState === APP_STATES.RECORDING && (
                 <>
                   <Button
                     variant="outline"
@@ -505,32 +729,41 @@ export default function NotelytixApp() {
 
                   <Button
                     size="lg"
-                    className={cn(
-                      "rounded-full px-8 h-12 min-w-[140px] transition-all",
-                      appState === APP_STATES.PAUSED
-                        ? "bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/20"
-                        : "bg-foreground text-background hover:bg-foreground/90"
-                    )}
-                    onClick={appState === APP_STATES.RECORDING ? handlePauseRecording : handleResumeRecording}
+                    className="rounded-full px-8 h-12 min-w-[140px] bg-foreground text-background hover:bg-foreground/90 transition-all"
+                    onClick={handlePauseRecording}
                   >
-                    {appState === APP_STATES.RECORDING ? (
-                      <><Pause className="h-5 w-5 mr-2" /> Pause</>
-                    ) : (
-                      <><Play className="h-5 w-5 mr-2 fill-current" /> Resume</>
-                    )}
+                    <Pause className="h-5 w-5 mr-2" /> Pause
+                  </Button>
+                </>
+              )}
+
+              {appState === APP_STATES.PAUSED && (
+                <>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="rounded-full h-12 w-12 border-red-100 bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 hover:border-red-200 transition-colors"
+                    onClick={handleStopRecording}
+                  >
+                    <Square className="h-5 w-5 fill-current" />
+                  </Button>
+
+                  <Button
+                    size="lg"
+                    className="rounded-full px-8 h-12 min-w-[140px] bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/20 transition-all font-medium"
+                    onClick={handleResumeRecording}
+                  >
+                    <Play className="h-5 w-5 mr-2 fill-current" /> Resume
                   </Button>
                 </>
               )}
 
               {appState === APP_STATES.STOPPED && (
-                <Button
-                  size="lg"
-                  className="rounded-full px-8 bg-primary hover:bg-primary/90 text-white h-12 animate-pulse-slow shadow-lg shadow-primary/30"
+                <SummaryButton
                   onClick={handleGenerateSummary}
-                >
-                  <PenTool className="h-5 w-5 mr-2" />
-                  Generate Summary
-                </Button>
+                  hasSummary={!!summaryContent}
+                  animate={true}
+                />
               )}
 
               {appState !== APP_STATES.CONNECTING && appState !== APP_STATES.BUFFERING && (
@@ -615,7 +848,38 @@ export default function NotelytixApp() {
         </DialogContent>
       </Dialog>
 
-      <Toaster position="top-center" />
+      {/* Logout Confirmation Dialog */}
+      <Dialog open={showLogoutDialog} onOpenChange={setShowLogoutDialog}>
+        <DialogContent className="sm:max-w-[400px] rounded-2xl p-6">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              <AlertTriangle className="h-5 w-5 text-red-500" />
+              Sign Out
+            </DialogTitle>
+            <DialogDescription className="py-2 text-base">
+              Are you sure you want to sign out? You'll need to sign in again to access your notes.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex gap-2 sm:gap-0 mt-4">
+            <Button
+              variant="ghost"
+              onClick={() => setShowLogoutDialog(false)}
+              className="rounded-full flex-1 sm:flex-none"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleSignOut}
+              className="rounded-full bg-red-600 hover:bg-red-700 flex-1 sm:flex-none"
+            >
+              Sign Out
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Toaster position="top-center" expand={true} richColors />
     </div>
   );
 }
