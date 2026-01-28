@@ -11,7 +11,7 @@ NoteLytix transforms live conversations into structured, actionable intelligence
 ---
 
 ## 📽 Demo + Walkthrough
-
+Click This To watch the complete walkthrough
 [![NoteLytix — Demo](notelytix_thumbnail.gif)](https://www.canva.com/design/DAG_twznvp4/13NWTO6WAqyj5a-fpnuyxQ/watch)
 
 ---
