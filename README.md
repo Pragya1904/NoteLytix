@@ -115,9 +115,7 @@ kubectl apply -f deploy/
 
 ## 📽 Demo + Walkthrough
 
-link: `https://www.canva.com/design/DAG_twznvp4/13NWTO6WAqyj5a-fpnuyxQ/watch`
-
-For README playback: include clickable thumbnail or GIF proxy.
+[![NoteLytix — Demo](notelytix_demo.gif)](https://www.canva.com/design/DAG_twznvp4/13NWTO6WAqyj5a-fpnuyxQ/watch)
 
 ---
 
