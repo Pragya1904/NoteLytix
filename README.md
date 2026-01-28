@@ -10,6 +10,12 @@ NoteLytix transforms live conversations into structured, actionable intelligence
 
 ---
 
+## 📽 Demo + Walkthrough
+
+[![NoteLytix — Demo](notelytix_demo.gif)](https://www.canva.com/design/DAG_twznvp4/13NWTO6WAqyj5a-fpnuyxQ/watch)
+
+---
+
 ## 🔐 Privacy + Control
 
 • Data locality preserved end-to-end
@@ -110,12 +116,6 @@ kubectl apply -f deploy/
 * Enterprise workspace management
 * Org-wide knowledge indexing
 * SOC2 + self-hosted deployment tier
-
----
-
-## 📽 Demo + Walkthrough
-
-[![NoteLytix — Demo](notelytix_demo.gif)](https://www.canva.com/design/DAG_twznvp4/13NWTO6WAqyj5a-fpnuyxQ/watch)
 
 ---
 
